@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+env/
+*.db
+*.sqlite
+
+# Secrets
+.env
+*.pem
+private_key*
+public_key*
+
+# Node / Vite
+node_modules/
+frontend/dist/
+*.log
+
+# ESP-IDF build artifacts
+firmware/build/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/dependencies.lock
+firmware/managed_components/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/

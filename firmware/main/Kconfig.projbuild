@@ -1,0 +1,15 @@
+menu "Echolocate Configuration"
+
+    config ECHOLOCATE_WIFI_SSID
+        string "WiFi SSID"
+        default "echolocate-hotspot"
+        help
+            SSID of the AP to connect to (your phone hotspot).
+
+    config ECHOLOCATE_WIFI_PASSWORD
+        string "WiFi Password"
+        default "changeme123"
+        help
+            Password of the AP. Min 8 chars for WPA2.
+
+endmenu
