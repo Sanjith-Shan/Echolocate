@@ -28,6 +28,7 @@ firmware/sdkconfig
 firmware/sdkconfig.old
 firmware/dependencies.lock
 firmware/managed_components/
+firmware/.cache/
 
 # OS
 .DS_Store

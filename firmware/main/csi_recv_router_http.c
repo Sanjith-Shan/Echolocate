@@ -358,7 +358,7 @@ static esp_err_t start_gateway_ping(void) {
 /* ---------- HTTP handlers ---------- */
 
 static esp_err_t root_get_handler(httpd_req_t *req) {
-    char buf[1024];
+    char buf[2048];
     int n_subcarriers, packets;
     int rssi;
     char ip[16], ssid[33];
