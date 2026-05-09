@@ -69,6 +69,11 @@ CAMERA_DEVICE_INDEX = int(os.getenv("CAMERA_DEVICE_INDEX", "1"))
 SNAPSHOT_COOLDOWN = int(os.getenv("SNAPSHOT_COOLDOWN", "30"))
 DB_PATH = os.getenv("ECHOLOCATE_DB", "echolocate.db")
 
+# Where to find the device's HTTP server (real ESP32 IP, or sim's HTTP port).
+# Default points at the simulator on localhost. For real hardware, set to e.g.
+# "http://172.20.10.5" or "http://echolocate.local".
+FIRMWARE_HTTP_URL = os.getenv("FIRMWARE_HTTP_URL", "http://127.0.0.1:8088")
+
 # ---------- Global state ----------
 
 csi_detector = CSIOccupancyDetector()
@@ -337,6 +342,135 @@ async def recalibrate():
     """Reset the baseline. Call after verifying the room is empty."""
     csi_detector.recalibrate()
     return {"status": "ok", "message": "Calibration reset. Keep the space empty for ~10 seconds."}
+
+
+@app.get("/api/firmware-status")
+async def firmware_status():
+    """Proxy the device's /health endpoint so the PWA can confirm it's
+    actually reaching the ESP32 (or simulator) over the network."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            r = await client.get(f"{FIRMWARE_HTTP_URL.rstrip('/')}/health")
+            r.raise_for_status()
+            return {
+                "reachable": True,
+                "url": FIRMWARE_HTTP_URL,
+                "device": r.json(),
+            }
+    except Exception as e:
+        return {
+            "reachable": False,
+            "url": FIRMWARE_HTTP_URL,
+            "error": str(e),
+            "hint": (
+                "Set FIRMWARE_HTTP_URL=http://<esp32-ip> in your .env "
+                "(or http://echolocate.local) once the firmware is flashed."
+            ),
+        }
+
+
+@app.get("/api/diagnostics")
+async def diagnostics():
+    """One-stop system health check. Returns red/green status for every
+    subsystem so the operator dashboard can render a clear "is everything
+    actually working?" view."""
+    occupancy = csi_detector.get_occupancy()
+    parse_rate = (serial_lines_parsed / serial_lines_seen) if serial_lines_seen else 0.0
+    csi_ok = serial_lines_parsed > 0 and parse_rate > 0.5
+
+    fw = await firmware_status()
+
+    checks = [
+        {
+            "id": "csi_stream",
+            "label": "CSI stream",
+            "ok": csi_ok,
+            "detail": (
+                f"{serial_lines_parsed}/{serial_lines_seen} lines parsed "
+                f"({parse_rate:.0%})"
+            ),
+            "blocker": (
+                None if csi_ok else
+                "No CSI lines parsed yet. Is the simulator or ESP32 running?"
+            ),
+        },
+        {
+            "id": "calibration",
+            "label": "Baseline calibration",
+            "ok": not occupancy.get("calibration_phase", True),
+            "detail": (
+                "Calibrated"
+                if not occupancy.get("calibration_phase", True)
+                else f"In progress ({int((occupancy.get('calibration_progress') or 0) * 100)}%)"
+            ),
+            "blocker": (
+                None if not occupancy.get("calibration_phase", True)
+                else "Keep the space empty for ~10 seconds."
+            ),
+        },
+        {
+            "id": "firmware_reachable",
+            "label": "Device reachable over network",
+            "ok": bool(fw.get("reachable")),
+            "detail": (
+                f"{fw.get('url')} — {fw.get('device', {}).get('firmware', '?')}"
+                if fw.get("reachable") else
+                f"Unreachable at {fw.get('url')}"
+            ),
+            "blocker": fw.get("hint") if not fw.get("reachable") else None,
+        },
+        {
+            "id": "anthropic",
+            "label": "Anthropic API key",
+            "ok": bool(os.getenv("ANTHROPIC_API_KEY")),
+            "detail": (
+                "Configured (Claude Vision + reports + chat enabled)"
+                if os.getenv("ANTHROPIC_API_KEY")
+                else "Not set — system runs in stub mode"
+            ),
+            "blocker": (
+                None if os.getenv("ANTHROPIC_API_KEY") else
+                "Drop ANTHROPIC_API_KEY=sk-ant-... into a .env file at the project root."
+            ),
+        },
+        {
+            "id": "vapid",
+            "label": "Web Push (VAPID)",
+            "ok": pusher.configured(),
+            "detail": (
+                "Configured" if pusher.configured() else
+                "Not set — push notifications disabled"
+            ),
+            "blocker": (
+                None if pusher.configured() else
+                "Generate VAPID keys and add VAPID_PRIVATE_KEY/VAPID_PUBLIC_KEY to .env."
+            ),
+        },
+        {
+            "id": "camera",
+            "label": "Camera",
+            "ok": camera.available(),
+            "detail": (
+                "OpenCV available — capture path active"
+                if camera.available() else
+                "OpenCV not installed — observations are metadata-only"
+            ),
+            "blocker": None,  # camera is optional; metadata-only path still works
+        },
+    ]
+
+    return {
+        "ok": all(c["ok"] for c in checks if c["id"] in ("csi_stream", "calibration")),
+        "checks": checks,
+        "occupancy": occupancy,
+        "config": {
+            "serial_port": SERIAL_PORT,
+            "firmware_http_url": FIRMWARE_HTTP_URL,
+            "snapshot_cooldown_s": SNAPSHOT_COOLDOWN,
+            "db_path": DB_PATH,
+        },
+    }
 
 
 @app.get("/api/vapid-public-key")
