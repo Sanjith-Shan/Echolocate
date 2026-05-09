@@ -61,8 +61,22 @@ def test_app_root_serves_html(backend):
 def test_app_includes_all_tabs(backend):
     r = httpx.get(f"http://127.0.0.1:{backend}/app/")
     html = r.text
-    for tab in ("individual", "operator", "chat", "diagnostics", "privacy"):
+    for tab in ("individual", "operator", "transparency", "chat",
+                "diagnostics", "privacy"):
         assert f'data-tab="{tab}"' in html, f"tab '{tab}' missing"
+
+
+def test_app_js_references_governance_endpoints(backend):
+    r = httpx.get(f"http://127.0.0.1:{backend}/app/app.js")
+    js = r.text
+    for path in ("/api/decisions", "/api/community-feedback",
+                 "/api/transparency"):
+        assert path in js, f"app.js missing reference to {path}"
+
+
+def test_app_html_has_plain_language_toggle(backend):
+    r = httpx.get(f"http://127.0.0.1:{backend}/app/")
+    assert 'id="plain-toggle"' in r.text
 
 
 def test_static_pwa_assets_load(backend):
