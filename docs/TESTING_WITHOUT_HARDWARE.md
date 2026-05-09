@@ -89,81 +89,98 @@ you exactly what to add to `.env` to fix each one.
 
 ## Tier 2 — Walk through each user story
 
-### 2.1 Sarah / Marcus — the *watched*
+The PWA now has **three tabs**: **Home / Consumer / Business**.
+
+### 2.1 Sarah / Marcus — the *watched* (Home + Consumer tab)
 
 Goal: confirm anyone can audit the system without enrolling.
 
-1. **Tap the "Public" tab.** This is the page someone scans the QR code at
-   the door to land on. No login.
+1. **Land on Home** (the default tab). This is the page someone scans the
+   QR code at the door to land on. No login.
 2. Read the "Right now" card → should say `Calm right now`.
-3. Scroll: "What IS collected" / "What is NEVER collected" lists,
-   "Verify the device yourself" button.
-4. **Click "Verify the device yourself"** → opens
-   `http://localhost:8088/health` in a new tab. The watched can directly
-   read what the operator reads. (On real hardware this opens the ESP32's
-   own page.)
-5. Submit anonymous feedback: tap **Me**, fill the form ("Felt cramped at
-   noon"), Submit. Toast says "Submitted anonymously".
-6. Tap **Public** again — your feedback is on the public page. No name
+3. Scroll: "What IS / NEVER collected" lists, "Verify the device yourself"
+   link → opens `http://localhost:8088/health` in a new tab.
+4. Tap **"I'm a Consumer"** — switches to the Consumer tab.
+5. **Check in:** type "main" in the zone field, tick "Felt crowded",
+   click the big "I'm here" button. Toast: "Checked in to main".
+6. The "My visits" card shows the visit you just logged with the
+   "felt crowded" badge.
+7. Scroll to "Speak up — anonymously" and submit a concern. No name
    attached.
 
-### 2.2 Yvonne — the operator (the paying customer)
+### 2.2 Consumer ↔ Consumer exposure flow (two browsers)
 
-Goal: confirm the dashboard is usable without engineering background.
+This is the core privacy claim: when one consumer reports sick, anyone who
+overlapped them gets notified — without learning *who* reported it.
 
-1. **Tap "Operator".** Top of the panel: `Display mode · ☑ Plain language`.
-   Verify that "Stream health" and "System status" cards (with engineer-speak
-   like *variance ratio*) are **hidden** by default.
-2. Untick the toggle. The technical cards reappear. Re-tick.
-3. **Trigger an AI judgment** — in another terminal:
+1. In **Chrome** (browser 1): Consumer tab → "I'm here" with zone "main".
+2. In **Firefox or Safari** (browser 2): Consumer tab → "I'm here" with
+   zone "main". Each browser has its own anonymous token in localStorage.
+3. In browser 2: tap **"Report positive test"**, confirm. Toast says
+   "Sent N anonymous alerts".
+4. Switch to browser 1 and look at the **Notifications inbox** — there's
+   a new exposure alert. The red badge on the Consumer tab shows the
+   unread count. **The alert body never names browser 2.**
+5. Click "Mark read" — the notification dims and the badge decrements.
+
+If you only have one browser, run the equivalent over curl:
+
+```bash
+T1=$(curl -s -X POST http://localhost:8000/api/register -H 'Content-Type: application/json' -d '{}' \
+     | python3 -c "import json,sys;print(json.load(sys.stdin)['token_id'])")
+T2=$(curl -s -X POST http://localhost:8000/api/register -H 'Content-Type: application/json' -d '{}' \
+     | python3 -c "import json,sys;print(json.load(sys.stdin)['token_id'])")
+
+curl -s -X POST http://localhost:8000/api/consumer/check-in -H 'Content-Type: application/json' \
+     -d "{\"token_id\":\"$T1\",\"zone\":\"main\"}"
+curl -s -X POST http://localhost:8000/api/consumer/check-in -H 'Content-Type: application/json' \
+     -d "{\"token_id\":\"$T2\",\"zone\":\"main\"}"
+curl -s -X POST http://localhost:8000/api/consumer/report-sick -H 'Content-Type: application/json' \
+     -d "{\"token_id\":\"$T2\"}"
+
+curl -s "http://localhost:8000/api/consumer/notifications?token_id=$T1" | python3 -m json.tool
+# Should show 1 exposure notification.
+```
+
+### 2.3 Yvonne — the business broadcasts to its visitors
+
+Goal: business detects an issue (air filter offline, scheduled closure,
+follow-up) and notifies everyone who was there in a window — anonymously.
+
+1. **Switch to the Business tab.**
+2. Scroll to "Notify visitors". The **From** / **To** fields are
+   pre-filled with the past hour (UTC).
+3. Pick `Type: General`, leave `Zone: main`, edit the body
+   ("Air filtration was offline for 30 minutes during your visit. We're
+   following up. No action needed.").
+4. Click **Send broadcast**. The status text shows
+   `Sent to N visitor(s)` — that N is exactly the number of consumers who
+   checked into "main" in the past hour.
+5. Switch back to the Consumer tab → Notifications inbox. The general
+   broadcast is there alongside the exposure alert.
+
+### 2.4 AI suggestion → operator decision loop
+
+1. Trigger crowding from another terminal:
    ```bash
    curl -X POST http://localhost:8088/control \
      -H 'Content-Type: application/json' -d '{"level":"high"}'
    ```
-   Wait ~8 seconds. The "AI suggestions waiting on you" card should fill
-   in with at least one decision card.
-4. **Act on the AI suggestion.** Type a note in the textbox, click
-   **Accept** (or **Considered** / **Reject**). The badge flips colour and
-   your note is persisted.
-5. **Tap "Public"** — the same decision now shows the new status badge and
-   the note you wrote.
+2. Wait ~8 seconds. **Business tab → "AI suggestions waiting on you"**
+   shows a new card.
+3. Type a note ("Will rearrange tables Monday"), click **Accept**. The
+   badge flips green.
 
-That's the full **AI suggests → operator decides → public sees** loop.
+### 2.5 Recalibrate, generate report, ask the AI
 
-### 2.3 Recalibrate flow (when the room wasn't actually empty at boot)
+These tools live in **Business → System diagnostics** and **Business →
+Ask Echolocate**, both collapsed by default. Click "Expand" on either.
 
-1. **Operator tab → "Recalibrate baseline"**. Confirm the dialog. Toast:
-   "Recalibrating — keep the space empty for 10s".
-2. Wait 10s. The Live Occupancy gauge briefly shows `calibrating…` then
-   flips back to a real level based on whatever the simulator is currently
-   producing.
-
-### 2.4 Anonymous push-notification enrollment
-
-1. **Me tab → "Enable notifications"**. Browser asks for permission. Decline
-   or accept — either is fine for the test.
-2. Status flips to `✓ Enrolled` and the **"I tested positive"** button
-   appears.
-3. Click "I tested positive" → confirms → toast shows `Sent N anonymous
-   alerts` (0 unless you registered multiple tokens). The flow runs
-   through the same code path that real exposure notifications use.
-
-### 2.5 Chat with the AI
-
-1. **Chat tab.** Type "How crowded is it?" → Send.
-2. You'll get a reply prefixed with `(Stub reply — set ANTHROPIC_API_KEY...)`.
-   This proves the endpoint works; the actual Claude reasoning is gated
-   behind the API key.
-3. **Tap Operator → AI suggestions waiting on you** — your chat call also
-   shows up in the AI Decision Log. You can mark it accepted/rejected
-   like any other AI judgment. *Every* AI call is auditable.
-
-### 2.6 Generate a Space Design Report
-
-1. **Operator tab → "Generate report"**. With at least 1 observation
-   (you triggered one in 2.2), you'll get a stub report.
-2. The report itself also gets logged in the AI decisions table. Check by
-   curling `/api/decisions` or by looking on the **Public** tab.
+- "Recalibrate baseline" → resets the variance baseline (use after the
+  room is verified empty).
+- "Generate report" → runs the Space Design Report (stub if no API key).
+- Chat → ask "How busy is it?" — every response is logged as an AI
+  decision in the same /api/decisions table.
 
 ---
 
@@ -215,7 +232,7 @@ source .venv/bin/activate
 python3 -m pytest tests/ --timeout=60 -q
 ```
 
-Expect: **47 passed**. The suite includes:
+Expect: **59 passed**. The suite includes:
 
 - 5 CSI parsing tests (real CSV format, edge cases)
 - 7 occupancy classification tests
@@ -226,6 +243,8 @@ Expect: **47 passed**. The suite includes:
 - 4 diagnostics endpoint tests
 - 6 frontend smoke tests (every static asset, all six tabs, references)
 - 9 governance tests (decision log, transparency redaction, feedback loop)
+- 12 consumer/business tests (check-in, exposure flow, broadcast,
+  privacy-invariant assertions)
 - 1 .env autoload test
 
 If any fail, that's a real regression worth pasting.

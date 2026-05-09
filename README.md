@@ -179,12 +179,14 @@ long as the Vision request takes. The image never touches disk.
 - [x] Auto-loaded `.env` from project root — drop the key, it works
 - [x] **Governance surface:** AI decision log, operator accept/reject loop,
       public transparency page, anonymous community feedback
-- [x] PWA (Me / Operator / **Public** / Chat / Diag / Privacy)
-- [x] Plain-language toggle (defaults on; non-technical operators can use
-      the dashboard without seeing "variance ratio")
+- [x] **Consumer ↔ Business contact-tracing:** check-in, anonymous
+      report-sick → exposure alerts, business broadcast to visitors in a
+      time window, persistent visit log + notification inbox
+- [x] PWA — three tabs only: **Home / Consumer / Business**
 - [x] One-command demo launcher (`./run-demo.sh`)
-- [x] **47 passing tests** — privacy invariants enforced in test code,
-      not just docs (e.g. public transparency must not leak raw I/O)
+- [x] **59 passing tests** — privacy invariants enforced in test code,
+      not just docs (e.g. notifications never name the reporter; visit
+      stats never leak token_ids)
 
 Open before hackathon day:
 

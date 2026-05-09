@@ -182,6 +182,53 @@ zero brittleness, served as static files by FastAPI directly.
    asserts the SQLite schema has *no* column named image/photo/frame/jpeg/
    snapshot_data — privacy-by-architecture enforced at the schema level.
 
+### Phase 9 — Two-mode UX (Consumer / Business) + broadcast notify
+
+User feedback: "only two tabs essentially — Consumer and Business — plus
+maybe a third for a main page. Functionality matters more than UI."
+Restructured accordingly.
+
+**Backend changes:**
+- New `visits` table (persistent zone+time log per token) and
+  `notifications` table (per-token in-app inbox).
+- New endpoints (commit `e8958e2`):
+  - `POST /api/consumer/check-in` — auto-registers unknown tokens, logs
+    a visit, optional `crowded:true` flag.
+  - `POST /api/consumer/report-sick` — finds in-memory AND DB-persisted
+    overlaps, writes notifications, fires push if VAPID configured.
+  - `GET  /api/consumer/notifications` (with `unread_only` filter)
+  - `POST /api/consumer/notifications/{id}/read`
+  - `GET  /api/consumer/my-visits`
+  - `POST /api/business/notify-visitors` — broadcast a message to every
+    token whose visit overlapped a zone+time window.
+  - `GET  /api/business/visits` — aggregate counts only (no IDs).
+- Bug uncovered + fixed: storage was using local-time, broadcast windows
+  were UTC, matches missed across timezone gap. Now UTC throughout
+  (`%Y-%m-%dT%H:%M:%SZ`).
+- Legacy aliases (`/api/checkin`, `/api/report-positive`) preserved so
+  the prior 47 tests still pass.
+
+**Frontend changes (commit `9b5c3bd`):**
+- Six tabs collapsed to three: **Home / Consumer / Business**.
+- Home merges what used to be the Privacy + Public tabs (it IS the
+  public-transparency page now). Includes "I'm a Consumer / I'm a
+  Business" role buttons.
+- Consumer: live status, "I'm here" check-in (with felt-crowded),
+  notifications inbox with unread badge, my-visits history, big red
+  "Report positive test" button, anonymous community feedback,
+  one-tap push enrollment.
+- Business: live gauge + sparkline, visit-stats grid, **broadcast**
+  form with zone+time window+type+title+body, AI Decision Log with
+  Accept/Considered/Reject + notes, community feedback list, recent
+  observations, Generate Report button, collapsed-by-default
+  Diagnostics + Chat sections.
+
+**Test coverage went from 47 → 59** (+12 consumer/business tests in
+`test_consumer_business.py`). New privacy assertions:
+- exposure notifications never contain the reporter's token_id in
+  title or body
+- `/api/business/visits` aggregate stats never leak any token_id
+
 ### Phase 8 — Governance & Collaboration lens (track-aligned redesign)
 
 User asked us to apply the hackathon track lens — "Governance &
