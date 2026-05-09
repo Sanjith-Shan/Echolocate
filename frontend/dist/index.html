@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0ea5e9">
+<title>Echolocate</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    --bg: #0f172a;
+    --bg2: #1e293b;
+    --fg: #e2e8f0;
+    --muted: #94a3b8;
+    --line: #334155;
+    --accent: #0ea5e9;
+    --accent2: #38bdf8;
+    --green: #22c55e;
+    --yellow: #eab308;
+    --orange: #f97316;
+    --red: #ef4444;
+    --purple: #a78bfa;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    min-height: 100vh;
+    /* iOS home indicator clearance — falls back to plain 80px on other browsers */
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  }
+  header {
+    padding: 1.2em 1em 0.6em;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 {
+    font-size: 1.4em;
+    margin: 0;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+  }
+  header .pill {
+    font-size: 0.55em;
+    background: var(--bg2);
+    color: var(--muted);
+    padding: 0.2em 0.6em;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  header .pill.conn-up   { background: rgba(34,197,94,0.15);  color: var(--green); }
+  header .pill.conn-down { background: rgba(239,68,68,0.15);  color: var(--red); }
+  .check-row {
+    display: flex; align-items: flex-start; gap: 0.6em;
+    padding: 0.6em 0; border-bottom: 1px dotted var(--line);
+  }
+  .check-row:last-child { border-bottom: none; }
+  .check-row .led {
+    width: 12px; height: 12px; border-radius: 50%; margin-top: 0.35em;
+    flex-shrink: 0; box-shadow: 0 0 8px currentColor;
+  }
+  .check-row .led.ok  { background: var(--green); color: var(--green); }
+  .check-row .led.bad { background: var(--red);   color: var(--red); }
+  .check-row .body { flex: 1; min-width: 0; }
+  .check-row .label { font-weight: 600; font-size: 0.95em; }
+  .check-row .detail { color: var(--muted); font-size: 0.85em; margin-top: 0.15em; word-break: break-word; }
+  .check-row .blocker { color: var(--yellow); font-size: 0.82em; margin-top: 0.3em; line-height: 1.4; }
+  main { padding: 1em; max-width: 760px; margin: 0 auto; }
+
+  .card {
+    background: var(--bg2);
+    border-radius: 12px;
+    padding: 1em 1.2em;
+    margin-bottom: 1em;
+    border: 1px solid var(--line);
+  }
+  .card h2 {
+    margin: 0 0 0.6em 0;
+    font-size: 1em;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+  }
+
+  .gauge {
+    display: flex;
+    align-items: center;
+    gap: 1em;
+  }
+  .gauge .dot {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 24px currentColor;
+    transition: background-color 0.4s, color 0.4s;
+  }
+  .gauge .label {
+    font-size: 1.6em;
+    text-transform: capitalize;
+    font-weight: 600;
+  }
+  .gauge .sub {
+    color: var(--muted);
+    font-size: 0.85em;
+    margin-top: 0.2em;
+  }
+  .level-empty       { background: var(--green);   color: var(--green); }
+  .level-low         { background: var(--yellow);  color: var(--yellow); }
+  .level-moderate    { background: var(--orange);  color: var(--orange); }
+  .level-high        { background: var(--red);     color: var(--red); }
+  .level-calibrating { background: var(--purple);  color: var(--purple); }
+
+  nav.tabs {
+    display: flex;
+    background: var(--bg);
+    border-top: 1px solid var(--line);
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+  }
+  nav.tabs {
+    /* iOS home indicator clearance for the bottom nav */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  nav.tabs button {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--muted);
+    padding: 0.9em 0.4em;
+    font-size: 0.78em;
+    cursor: pointer;
+    border-top: 3px solid transparent;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  nav.tabs button.active {
+    color: var(--accent);
+    border-top-color: var(--accent);
+  }
+
+  button.primary {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 0.7em 1.2em;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.95em;
+    font-weight: 600;
+  }
+  button.primary:disabled { background: var(--bg2); color: var(--muted); }
+  button.danger { background: var(--red); }
+  button.ghost {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--line);
+  }
+
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.8em; }
+  .stat { background: var(--bg); border-radius: 8px; padding: 0.6em 0.8em; }
+  .stat .v { font-size: 1.4em; font-weight: 600; }
+  .stat .k { font-size: 0.75em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+  #spark { width: 100%; height: 80px; background: var(--bg); border-radius: 8px; }
+
+  .obs {
+    border-left: 3px solid var(--accent);
+    padding: 0.6em 0.8em;
+    margin: 0.4em 0;
+    background: var(--bg);
+    border-radius: 0 6px 6px 0;
+    font-size: 0.9em;
+  }
+  .obs .ts { color: var(--muted); font-size: 0.8em; }
+
+  .privacy-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1em;
+  }
+  @media (min-width: 640px) {
+    .privacy-grid { grid-template-columns: 1fr 1fr; }
+  }
+  .privacy-grid h3 { margin-top: 0; }
+  .privacy-yes { color: var(--green); }
+  .privacy-no  { color: var(--red); }
+  .privacy-grid ul { padding-left: 1.2em; line-height: 1.6; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .chat-msg { margin: 0.6em 0; padding: 0.6em 0.8em; border-radius: 10px; max-width: 80%; }
+  .chat-msg.user { background: var(--accent); color: white; margin-left: auto; }
+  .chat-msg.bot { background: var(--bg); border: 1px solid var(--line); }
+  .chat-input { display: flex; gap: 0.5em; margin-top: 0.8em; }
+  .chat-input input { flex: 1; padding: 0.6em; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font-size: 1em; }
+
+  pre.report { white-space: pre-wrap; background: var(--bg); padding: 1em; border-radius: 8px; line-height: 1.5; }
+
+  .health-row { display: flex; justify-content: space-between; align-items: center; padding: 0.4em 0; border-bottom: 1px dotted var(--line); font-size: 0.9em; }
+  .health-row:last-child { border-bottom: none; }
+  .health-row .v { color: var(--muted); }
+  .ok { color: var(--green); }
+  .bad { color: var(--red); }
+
+  .toast {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg2);
+    color: var(--fg);
+    padding: 0.7em 1.2em;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+    z-index: 100;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>
+    Echolocate
+    <span class="pill">privacy-first</span>
+    <span id="conn" class="pill conn-down" title="Connection status">offline</span>
+  </h1>
+</header>
+
+<main>
+
+  <!-- ============ INDIVIDUAL VIEW ============ -->
+  <section class="view active" data-view="individual">
+    <div class="card">
+      <h2>Current zone density</h2>
+      <div class="gauge">
+        <div id="ind-dot" class="dot level-calibrating"></div>
+        <div>
+          <div id="ind-level" class="label">connecting…</div>
+          <div id="ind-sub" class="sub">Waiting for data from the sensor</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Stay informed</h2>
+      <p style="font-size:.92em;line-height:1.55;color:var(--muted)">
+        Get push notifications when this space is crowded — and anonymous alerts
+        if someone you shared the room with reports a positive test.
+        <strong>No identity data is ever collected.</strong>
+      </p>
+      <div id="enroll-status" style="margin-bottom:.6em;"></div>
+      <button id="btn-enroll" class="primary">Enable notifications</button>
+      <button id="btn-report" class="danger" style="margin-left:.4em;display:none">I tested positive</button>
+    </div>
+
+    <div class="card">
+      <h2>What this means</h2>
+      <ul style="line-height:1.7;color:var(--muted);font-size:.92em;">
+        <li><strong style="color:var(--green)">Empty / Low:</strong> Safe to enter. Plenty of room.</li>
+        <li><strong style="color:var(--orange)">Moderate:</strong> Consider spacing out or returning later.</li>
+        <li><strong style="color:var(--red)">High:</strong> Crowded. We recommend deferring your visit.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ OPERATOR VIEW ============ -->
+  <section class="view" data-view="operator">
+    <div class="card">
+      <h2>Live occupancy</h2>
+      <div class="gauge">
+        <div id="op-dot" class="dot level-calibrating"></div>
+        <div style="flex:1">
+          <div id="op-level" class="label">connecting…</div>
+          <div id="op-sub" class="sub">—</div>
+        </div>
+      </div>
+      <canvas id="spark" style="margin-top:1em"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Stream health</h2>
+      <div id="health"></div>
+      <div style="margin-top:.8em;display:flex;gap:.4em;flex-wrap:wrap">
+        <button id="btn-recalibrate" class="ghost">Recalibrate baseline</button>
+        <span style="color:var(--muted);font-size:.78em;align-self:center">
+          Empty the room first, then click. Takes ~10s.
+        </span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>System status</h2>
+      <div class="stats">
+        <div class="stat"><div id="st-obs" class="v">0</div><div class="k">Observations</div></div>
+        <div class="stat"><div id="st-var" class="v">0</div><div class="k">Variance</div></div>
+        <div class="stat"><div id="st-rat" class="v">0</div><div class="k">Variance ratio</div></div>
+        <div class="stat"><div id="st-cnt" class="v">0</div><div class="k">Estimated count</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Recent observations</h2>
+      <div id="observations"><em style="color:var(--muted)">No threshold events yet.</em></div>
+    </div>
+
+    <div class="card">
+      <h2>Space Design Report</h2>
+      <p style="color:var(--muted);font-size:.92em">
+        Generate an AI-written report from accumulated spatial metadata.
+        No images are used; only structured observations.
+      </p>
+      <button id="btn-report-gen" class="primary">Generate report</button>
+      <pre id="report" class="report" style="display:none;margin-top:1em"></pre>
+    </div>
+  </section>
+
+  <!-- ============ CHAT ============ -->
+  <section class="view" data-view="chat">
+    <div class="card">
+      <h2>Ask Echolocate</h2>
+      <div id="chat-log"></div>
+      <div class="chat-input">
+        <input id="chat-input" placeholder="Is it safe to come in now?" />
+        <button id="btn-send" class="primary">Send</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ DIAGNOSTICS ============ -->
+  <section class="view" data-view="diagnostics">
+    <div class="card">
+      <h2>System health</h2>
+      <p style="color:var(--muted);font-size:.92em;margin-top:0">
+        Each row tests one part of the pipeline. All green means the demo is ready to go.
+      </p>
+      <div id="diag-checks"><em style="color:var(--muted)">Loading…</em></div>
+      <div style="margin-top:.8em;display:flex;gap:.4em;flex-wrap:wrap">
+        <button id="btn-diag-refresh" class="primary">Re-run checks</button>
+        <button id="btn-diag-firmware" class="ghost">Test device link</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Active configuration</h2>
+      <div id="diag-config" class="health-row" style="display:block">
+        <em style="color:var(--muted)">Loading…</em>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Quick test recipes</h2>
+      <p style="color:var(--muted);font-size:.88em;line-height:1.55">
+        Verify the firmware over WiFi from any terminal:
+      </p>
+      <pre style="background:var(--bg);padding:.8em;border-radius:8px;font-size:.78em;overflow-x:auto">curl http://&lt;esp-ip&gt;/health
+curl http://&lt;esp-ip&gt;/stats
+curl http://&lt;esp-ip&gt;/csi/latest</pre>
+      <p style="color:var(--muted);font-size:.88em;line-height:1.55">
+        Or hit them through the backend (no need to know the IP):
+      </p>
+      <pre style="background:var(--bg);padding:.8em;border-radius:8px;font-size:.78em;overflow-x:auto">curl /api/firmware-status
+curl /api/diagnostics</pre>
+    </div>
+  </section>
+
+  <!-- ============ PRIVACY ============ -->
+  <section class="view" data-view="privacy">
+    <div class="card">
+      <h2>Privacy by architecture</h2>
+      <p style="line-height:1.55;font-size:.92em">
+        Echolocate is built so that surveillance is <em>physically impossible</em>,
+        not merely against policy. The schema below has nowhere to put an image,
+        and the camera shutter is closed by default.
+      </p>
+    </div>
+
+    <div class="privacy-grid">
+      <div class="card">
+        <h3 class="privacy-yes">What IS collected</h3>
+        <ul>
+          <li>Aggregate occupancy levels (empty / low / moderate / high)</li>
+          <li>Anonymous rotating tokens (changed every 15 min)</li>
+          <li>Zone + time pairs you visited (only if you opted in)</li>
+          <li>Spatial metadata extracted from threshold-triggered snapshots — counts and clusters near features</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3 class="privacy-no">What is NEVER collected</h3>
+        <ul>
+          <li>Photos, video, or audio</li>
+          <li>Faces or biometric features</li>
+          <li>Names, email, phone, account info</li>
+          <li>Browsing or location history outside this space</li>
+          <li>Identity information of any kind</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Image lifecycle</h2>
+      <pre style="margin:0;font-size:.85em;line-height:1.5;color:var(--muted)">
+   capture → ~2s in RAM → Claude Vision → discard
+      ↓                         ↓                  ↓
+  [no disk]              [structured JSON]   [memory cleared]
+                                ↓
+                       saved to SQLite store
+                       (no image columns exist)
+      </pre>
+    </div>
+  </section>
+
+</main>
+
+<nav class="tabs">
+  <button data-tab="individual" class="active">Me</button>
+  <button data-tab="operator">Operator</button>
+  <button data-tab="chat">Chat</button>
+  <button data-tab="diagnostics">Diag</button>
+  <button data-tab="privacy">Privacy</button>
+</nav>
+
+<div id="toast" class="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

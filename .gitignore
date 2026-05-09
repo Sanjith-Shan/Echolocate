@@ -18,7 +18,8 @@ public_key*
 
 # Node / Vite
 node_modules/
-frontend/dist/
+# NOTE: We use frontend/dist/ as a hand-written vanilla PWA, not a build
+# artifact, so it IS checked in. If we ever switch back to Vite, re-add it.
 *.log
 
 # ESP-IDF build artifacts
