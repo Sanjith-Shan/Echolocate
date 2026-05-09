@@ -33,29 +33,49 @@ echolocate/
 ## How to run *right now* (no ESP32 needed)
 
 ```bash
-# 1. Install deps
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r backend/requirements.txt
-pip install pytest pytest-timeout httpx websockets
+./run-demo.sh                         # boots sim + backend, prints URLs
+# Open http://localhost:8000/app/ — that's the PWA.
+# Open http://localhost:8000/app/#diagnostics — green-light system check.
 
-# 2. Start the simulator (publishes synthetic CSI on tcp://127.0.0.1:3333)
-python3 -m sim.esp32_sim --no-stdin --tcp-port 3333 --http-port 8088 &
-
-# 3. Start the backend pointed at the sim
-SERIAL_PORT=tcp://127.0.0.1:3333 \
-  python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
-
-# 4. Open the PWA at http://localhost:8000/app/
-# 5. Optional: drive the simulator from another terminal:
+# Drive crowd levels from another terminal:
 curl -X POST http://127.0.0.1:8088/control \
   -H 'Content-Type: application/json' -d '{"level":"high"}'
+
+# Other modes:
+./run-demo.sh --scenario surge        # auto-ramp empty→high→empty
+./run-demo.sh --hardware /dev/cu.usbmodem14101 http://172.20.10.5
 ```
+
+If you'd rather wire it up by hand:
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r backend/requirements.txt
+python3 -m sim.esp32_sim --no-stdin --tcp-port 3333 --http-port 8088 &
+SERIAL_PORT=tcp://127.0.0.1:3333 FIRMWARE_HTTP_URL=http://127.0.0.1:8088 \
+  python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
+
+### API keys
+
+Drop a `.env` file at the project root and the backend auto-loads it:
+
+```env
+ANTHROPIC_API_KEY=sk-ant-...
+VAPID_PRIVATE_KEY=...
+VAPID_PUBLIC_KEY=...
+VAPID_CLAIMS_EMAIL=mailto:you@example.com
+```
+
+The pipeline runs in stub mode if any of these are missing — the
+`/app/#diagnostics` page tells you exactly which ones aren't set
+and what to add to fix them.
 
 Or run the test suite to validate end-to-end:
 
 ```bash
 python3 -m pytest tests/ --timeout=60
-# 27 passed in ~38s
+# 36 passed in ~55s
 ```
 
 ## How to test the **real ESP32 firmware over WiFi**
@@ -152,16 +172,19 @@ long as the Vision request takes. The image never touches disk.
 
 ## Status (2026-05-09)
 
-- [x] ESP32-S3 firmware (ESP-IDF, with WiFi HTTP test server)
-- [x] Python simulator (TCP + HTTP, no hardware needed)
+- [x] ESP32-S3 firmware (ESP-IDF, ICMP-driven CSI, WiFi HTTP test server)
+- [x] Python simulator (TCP + HTTP, no hardware needed, `/control` for tests)
 - [x] Backend (CSI parser, FastAPI, all stub-friendly when API keys missing)
-- [x] Anonymous contact tracing + Web Push wiring
-- [x] PWA (operator dashboard, individual view, chat, privacy, report)
-- [x] **27 passing tests** including e2e simulator + backend integration
+- [x] `/api/diagnostics` + `/api/firmware-status` — green/red system health
+- [x] Auto-loaded `.env` from project root — drop the key, it works
+- [x] PWA (Individual / Operator / Chat / Diagnostics / Privacy)
+- [x] One-command demo launcher (`./run-demo.sh`)
+- [x] **36 passing tests** — unit + 6 end-to-end fixtures booting full stack
 
 Open before hackathon day:
 
-- Flash the firmware on real hardware and confirm the boot banner appears
+- Flash firmware on real hardware; confirm `curl http://<ip>/health` shows
+  `ping_replies` rising
 - Calibrate variance thresholds against the real room (Lodge @ Sixth)
-- Provision VAPID keys + ANTHROPIC_API_KEY for full demo
+- Provision VAPID keys + ANTHROPIC_API_KEY in `.env` (auto-loaded)
 - Set up `ngrok` so the PWA is reachable over HTTPS for iOS push

@@ -182,6 +182,54 @@ zero brittleness, served as static files by FastAPI directly.
    asserts the SQLite schema has *no* column named image/photo/frame/jpeg/
    snapshot_data — privacy-by-architecture enforced at the schema level.
 
+### Phase 7 — Hardening pass (after first review)
+
+User asked us to find and remove blockers, and to make the system trivially
+testable end-to-end. What changed in this pass:
+
+1. **`.env` auto-load.** Dropping `ANTHROPIC_API_KEY=...` into a `.env` at
+   the project root now wakes up the entire pipeline with no `export` calls.
+   Backend imports `python-dotenv` lazily so it's still optional.
+
+2. **Firmware: ICMP ping replaced UDP-discard.** UDP to a closed port
+   doesn't reliably get replies on iPhone hotspots, which would have left
+   `packets_received=0` on demo day. Switched to `esp_ping` at 10 Hz against
+   the gateway. New `ping_replies` counter exposed in `/health` so a single
+   `curl` confirms the loop is alive.
+
+3. **`/api/diagnostics` + `/api/firmware-status`.** One REST call returns
+   green/red status for every subsystem (CSI stream, calibration, device
+   reachability, Anthropic key, VAPID, camera). Each failing check carries
+   a one-line *blocker text* with the exact fix. `/api/firmware-status`
+   proxies the device's own `/health` so the operator can confirm the
+   laptop truly reaches the ESP32 over WiFi.
+
+4. **Diagnostics tab in the PWA.** Renders the diagnostics endpoint with
+   coloured LED dots + blocker hints. Two action buttons: re-run checks,
+   ping device. Top of header gets a `live`/`offline` pill that flips
+   colour with the WebSocket state.
+
+5. **iOS safe-area support.** Body and bottom nav now use
+   `env(safe-area-inset-bottom)` so the home indicator no longer overlaps
+   the tab bar in standalone mode.
+
+6. **`run-demo.sh`** — one command boots venv + sim + backend, prints all
+   URLs, traps Ctrl-C and tears the stack down. `--scenario surge` for
+   auto-ramping crowds. `--hardware <serial> <url>` for real ESP32.
+
+7. **CRITICAL bug found & fixed:** `frontend/dist/` was in `.gitignore`
+   from when I planned to use Vite. It had **never been committed**.
+   Anyone cloning the repo would have had no PWA. Removed the pattern,
+   force-added all six files (`index.html`, `app.js`, `sw.js`,
+   `manifest.json`, `icon-192.png`, `icon-512.png`).
+
+8. **9 new tests, 36 total passing:**
+   - `test_diagnostics.py` — proxy success/failure paths, all checks
+     present, blocker text, `.env` autoload.
+   - `test_frontend.py` — every static asset returns 200, all 5 tabs in
+     the HTML, manifest is valid JSON with the right scope, `app.js`
+     references the diagnostics endpoints (catches URL drift).
+
 ### Phase 6 — Final integration validation (PASSED)
 
 Ran a synthetic 8-stage scenario end-to-end. Results:
