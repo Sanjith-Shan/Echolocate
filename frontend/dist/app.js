@@ -414,3 +414,227 @@ document.querySelectorAll('nav.tabs button[data-tab="diagnostics"]').forEach(btn
 });
 // Also load once on page boot so the tab isn't empty if the user goes straight there
 loadDiagnostics();
+
+// ---------- Plain-language toggle ----------
+
+const PLAIN_KEY = "echolocate_plain";
+function applyPlain(plain) {
+  document.body.classList.toggle("plain", plain);
+  const t = $("#plain-toggle");
+  if (t) t.checked = plain;
+  localStorage.setItem(PLAIN_KEY, plain ? "1" : "0");
+}
+applyPlain(localStorage.getItem(PLAIN_KEY) !== "0");  // default on
+$("#plain-toggle")?.addEventListener("change", e => applyPlain(e.target.checked));
+
+// ---------- AI Decision Log (operator) ----------
+
+const STATUS_LABEL = {
+  pending: "Awaiting decision",
+  considered: "Considered",
+  accepted: "Accepted",
+  rejected: "Rejected",
+};
+
+function renderDecisions(decisions) {
+  const target = $("#decisions");
+  if (!target) return;
+  if (!decisions || decisions.length === 0) {
+    target.innerHTML = `<em style="color:var(--muted)">No suggestions yet — they appear here when crowding triggers an AI analysis.</em>`;
+    return;
+  }
+  target.innerHTML = decisions.map(d => {
+    const status = d.operator_status || "pending";
+    const ts = new Date(d.created_at).toLocaleString();
+    const notesDisplay = d.operator_notes
+      ? `<div class="notes-display">📝 ${escapeHtml(d.operator_notes)}</div>` : "";
+    return `
+      <div class="decision" data-id="${d.id}">
+        <div class="row1">
+          <span class="badge badge-${status}">${STATUS_LABEL[status] || status}</span>
+          <span>${escapeHtml(d.decision_type)}</span>
+          <span>·</span>
+          <span>${ts}</span>
+          <span>·</span>
+          <span>${escapeHtml(d.model || "?")}</span>
+        </div>
+        <div class="summary">${escapeHtml(d.summary || "(no summary)")}</div>
+        ${notesDisplay}
+        <div class="actions">
+          <button data-status="considered">Considered</button>
+          <button data-status="accepted">Accept</button>
+          <button data-status="rejected">Reject</button>
+        </div>
+        <input class="notes-input" placeholder="Add a note (optional, saved on click)" />
+      </div>
+    `;
+  }).join("");
+
+  // Attach click handlers
+  target.querySelectorAll(".decision").forEach(card => {
+    const id = card.dataset.id;
+    const noteInput = card.querySelector(".notes-input");
+    card.querySelectorAll(".actions button").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const status = btn.dataset.status;
+        const r = await fetch(`${API_BASE}/api/decisions/${id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status, notes: noteInput.value || null }),
+        });
+        if (r.ok) {
+          toast(`Marked as ${STATUS_LABEL[status]}`);
+          loadDecisions();
+        } else {
+          const err = await r.json().catch(() => ({}));
+          toast(`Failed: ${err.error || r.status}`, 3000);
+        }
+      });
+    });
+  });
+}
+
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+async function loadDecisions() {
+  try {
+    const r = await fetch(`${API_BASE}/api/decisions`);
+    const data = await r.json();
+    renderDecisions(data.decisions);
+  } catch (e) {
+    console.warn("decisions load failed", e);
+  }
+}
+
+// ---------- Community feedback ----------
+
+async function loadFeedbackOperator() {
+  try {
+    const r = await fetch(`${API_BASE}/api/community-feedback`);
+    const { feedback } = await r.json();
+    const target = $("#feedback-list");
+    if (!target) return;
+    if (!feedback || feedback.length === 0) {
+      target.innerHTML = `<em style="color:var(--muted)">No feedback yet.</em>`;
+      return;
+    }
+    target.innerHTML = feedback.map(f => `
+      <div class="feedback-item ${escapeHtml(f.sentiment)}">
+        ${escapeHtml(f.message)}
+        <div class="meta">${escapeHtml(f.sentiment)} · ${new Date(f.created_at).toLocaleString()} · zone ${escapeHtml(f.zone || "main")}</div>
+      </div>
+    `).join("");
+  } catch (e) { console.warn("feedback load failed", e); }
+}
+
+$("#feedback-form")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const sentiment = $("#fb-sentiment").value;
+  const message = $("#fb-message").value.trim();
+  if (!message) return;
+  const r = await fetch(`${API_BASE}/api/community-feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sentiment, message, zone: "main" }),
+  });
+  if (r.ok) {
+    $("#fb-message").value = "";
+    toast("Submitted anonymously");
+    loadFeedbackOperator();
+    loadTransparency();
+  } else {
+    toast("Failed to submit", 2500);
+  }
+});
+
+// ---------- Public Transparency view ----------
+
+async function loadTransparency() {
+  try {
+    const r = await fetch(`${API_BASE}/api/transparency`);
+    const data = await r.json();
+
+    const now = data.right_now || {};
+    const plainStatus = now.plain_status || "—";
+    $("#tp-now").textContent = `${plainStatus.charAt(0).toUpperCase() + plainStatus.slice(1)} right now`;
+    $("#tp-now-sub").textContent = now.estimate != null
+      ? `Roughly ${now.estimate} ${now.estimate === 1 ? "person" : "people"} (${now.raw_level})`
+      : `Status: ${now.raw_level || "unknown"}`;
+
+    const inv = data.privacy_invariants || {};
+    $("#tp-yes").innerHTML = (inv.what_is_collected || []).map(x => `<li>${escapeHtml(x)}</li>`).join("");
+    $("#tp-no").innerHTML  = (inv.what_is_NEVER_collected || []).map(x => `<li>${escapeHtml(x)}</li>`).join("");
+    $("#tp-proof").textContent = inv.schema_proof || "";
+
+    const decTarget = $("#tp-decisions");
+    const decisions = (data.ai_activity || {}).recent || [];
+    if (decisions.length === 0) {
+      decTarget.innerHTML = `<em style="color:var(--muted)">No AI judgments yet.</em>`;
+    } else {
+      decTarget.innerHTML = decisions.map(d => {
+        const status = d.operator_status || "pending";
+        const notesDisplay = d.operator_notes
+          ? `<div class="notes-display">Operator note: ${escapeHtml(d.operator_notes)}</div>` : "";
+        return `
+          <div class="decision">
+            <div class="row1">
+              <span class="badge badge-${status}">${STATUS_LABEL[status] || status}</span>
+              <span>${escapeHtml(d.decision_type)}</span>
+              <span>·</span>
+              <span>${new Date(d.created_at).toLocaleString()}</span>
+            </div>
+            <div class="summary">${escapeHtml(d.summary || "(no summary)")}</div>
+            ${notesDisplay}
+          </div>
+        `;
+      }).join("");
+    }
+
+    const fbTarget = $("#tp-feedback");
+    const feedback = data.community_feedback_recent || [];
+    if (feedback.length === 0) {
+      fbTarget.innerHTML = `<em style="color:var(--muted)">No feedback yet.</em>`;
+    } else {
+      fbTarget.innerHTML = feedback.map(f => `
+        <div class="feedback-item ${escapeHtml(f.sentiment)}">
+          ${escapeHtml(f.message)}
+          <div class="meta">${escapeHtml(f.sentiment)} · ${new Date(f.created_at).toLocaleString()}</div>
+        </div>
+      `).join("");
+    }
+
+    const v = $("#tp-verify");
+    if (v && data.device?.verify_yourself) v.href = data.device.verify_yourself;
+
+  } catch (e) {
+    $("#tp-now").textContent = "(Unable to reach backend)";
+    $("#tp-now-sub").textContent = e.message;
+  }
+}
+
+// Auto-load operator panels + transparency when those tabs open
+document.querySelectorAll('nav.tabs button[data-tab="operator"]').forEach(btn => {
+  btn.addEventListener("click", () => { loadDecisions(); loadFeedbackOperator(); });
+});
+document.querySelectorAll('nav.tabs button[data-tab="transparency"]').forEach(btn => {
+  btn.addEventListener("click", loadTransparency);
+});
+
+// Refresh decisions/feedback periodically while operator is open
+setInterval(() => {
+  if (document.querySelector('.view[data-view="operator"].active')) {
+    loadDecisions(); loadFeedbackOperator();
+  }
+  if (document.querySelector('.view[data-view="transparency"].active')) {
+    loadTransparency();
+  }
+}, 15000);
+
+// Boot-time fetch so they're never blank
+loadDecisions();
+loadFeedbackOperator();
+loadTransparency();

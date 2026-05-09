@@ -234,6 +234,66 @@
     z-index: 100;
   }
   .toast.show { opacity: 1; }
+
+  /* Plain-language mode: hide engineer-speak cards entirely */
+  body.plain .techy { display: none !important; }
+
+  /* AI Decision cards (operator + transparency) */
+  .decision {
+    background: var(--bg);
+    border-left: 3px solid var(--accent);
+    padding: .7em .9em;
+    margin: .5em 0;
+    border-radius: 0 8px 8px 0;
+  }
+  .decision .row1 {
+    display: flex; gap: .5em; align-items: center; flex-wrap: wrap;
+    font-size: .78em; color: var(--muted);
+  }
+  .decision .summary { font-weight: 600; margin: .35em 0 .2em; line-height: 1.4; }
+  .decision .badge {
+    font-size: .7em; padding: .12em .5em; border-radius: 999px;
+    text-transform: uppercase; letter-spacing: .05em; font-weight: 600;
+  }
+  .badge-pending    { background: rgba(168,139,250,0.15); color: var(--purple); }
+  .badge-considered { background: rgba(234,179,8,0.15);   color: var(--yellow); }
+  .badge-accepted   { background: rgba(34,197,94,0.15);   color: var(--green); }
+  .badge-rejected   { background: rgba(239,68,68,0.15);   color: var(--red); }
+  .decision .actions { display: flex; gap: .3em; flex-wrap: wrap; margin-top: .5em; }
+  .decision .actions button {
+    font-size: .78em; padding: .35em .7em; border-radius: 6px;
+    background: var(--bg2); color: var(--fg); border: 1px solid var(--line);
+    cursor: pointer;
+  }
+  .decision .actions button:hover { background: var(--line); }
+  .decision .notes-input {
+    width: 100%; margin-top: .5em; padding: .4em .6em;
+    background: var(--bg2); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; font-size: .85em;
+    font-family: inherit;
+  }
+  .decision .notes-display {
+    margin-top: .4em; font-size: .82em; color: var(--muted);
+    font-style: italic;
+  }
+
+  /* Feedback form */
+  .feedback-form { display: flex; flex-direction: column; gap: .5em; }
+  .feedback-form select,
+  .feedback-form textarea {
+    background: var(--bg); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 6px; padding: .5em; font-family: inherit; font-size: .92em;
+  }
+  .feedback-form textarea { min-height: 70px; resize: vertical; }
+  .feedback-item {
+    background: var(--bg); padding: .5em .8em; border-radius: 6px;
+    margin: .3em 0; border-left: 3px solid var(--muted);
+    font-size: .9em;
+  }
+  .feedback-item.concern    { border-left-color: var(--orange); }
+  .feedback-item.praise     { border-left-color: var(--green); }
+  .feedback-item.suggestion { border-left-color: var(--accent); }
+  .feedback-item .meta { font-size: .75em; color: var(--muted); margin-top: .25em; }
 </style>
 </head>
 <body>
@@ -274,6 +334,23 @@
     </div>
 
     <div class="card">
+      <h2>Speak up — anonymously</h2>
+      <p style="font-size:.9em;color:var(--muted);line-height:1.5;margin-top:0">
+        Felt cramped? See something the operator should know? Send a note.
+        No identifiers attached, ever. Visible to operators and on the public Transparency page.
+      </p>
+      <form id="feedback-form" class="feedback-form">
+        <select id="fb-sentiment">
+          <option value="concern">Concern</option>
+          <option value="suggestion">Suggestion</option>
+          <option value="praise">Praise</option>
+        </select>
+        <textarea id="fb-message" placeholder="What did you notice?" maxlength="1000" required></textarea>
+        <button type="submit" class="primary" style="align-self:flex-start">Submit anonymously</button>
+      </form>
+    </div>
+
+    <div class="card">
       <h2>What this means</h2>
       <ul style="line-height:1.7;color:var(--muted);font-size:.92em;">
         <li><strong style="color:var(--green)">Empty / Low:</strong> Safe to enter. Plenty of room.</li>
@@ -286,7 +363,13 @@
   <!-- ============ OPERATOR VIEW ============ -->
   <section class="view" data-view="operator">
     <div class="card">
-      <h2>Live occupancy</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6em">
+        <span style="font-size:.75em;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Display mode</span>
+        <label style="display:inline-flex;align-items:center;gap:.4em;font-size:.85em;cursor:pointer">
+          <input id="plain-toggle" type="checkbox" checked />
+          <span>Plain language</span>
+        </label>
+      </div>
       <div class="gauge">
         <div id="op-dot" class="dot level-calibrating"></div>
         <div style="flex:1">
@@ -297,7 +380,7 @@
       <canvas id="spark" style="margin-top:1em"></canvas>
     </div>
 
-    <div class="card">
+    <div class="card techy">
       <h2>Stream health</h2>
       <div id="health"></div>
       <div style="margin-top:.8em;display:flex;gap:.4em;flex-wrap:wrap">
@@ -308,7 +391,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card techy">
       <h2>System status</h2>
       <div class="stats">
         <div class="stat"><div id="st-obs" class="v">0</div><div class="k">Observations</div></div>
@@ -319,8 +402,25 @@
     </div>
 
     <div class="card">
+      <h2>AI suggestions waiting on you</h2>
+      <p style="color:var(--muted);font-size:.88em;margin-top:0">
+        Each card is a judgment the AI made. You decide whether to act on it.
+        Your decision is logged and visible on the public Transparency page.
+      </p>
+      <div id="decisions"><em style="color:var(--muted)">No suggestions yet.</em></div>
+    </div>
+
+    <div class="card">
       <h2>Recent observations</h2>
       <div id="observations"><em style="color:var(--muted)">No threshold events yet.</em></div>
+    </div>
+
+    <div class="card">
+      <h2>Community feedback</h2>
+      <p style="color:var(--muted);font-size:.88em;margin-top:0">
+        Anonymous reports submitted by people in the space. No identifiers.
+      </p>
+      <div id="feedback-list"><em style="color:var(--muted)">No feedback yet.</em></div>
     </div>
 
     <div class="card">
@@ -343,6 +443,61 @@
         <input id="chat-input" placeholder="Is it safe to come in now?" />
         <button id="btn-send" class="primary">Send</button>
       </div>
+    </div>
+  </section>
+
+  <!-- ============ PUBLIC TRANSPARENCY ============ -->
+  <section class="view" data-view="transparency">
+    <div class="card">
+      <h2>Public transparency</h2>
+      <p style="color:var(--muted);font-size:.9em;line-height:1.55;margin-top:0">
+        This page is the system's promise. Anyone with the URL can see
+        everything the system knows — no login, no enrollment.
+        Bookmark it; share it.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Right now</h2>
+      <div id="tp-now" style="font-size:1.4em;font-weight:600;line-height:1.4">…</div>
+      <div id="tp-now-sub" style="color:var(--muted);font-size:.9em;margin-top:.3em">…</div>
+    </div>
+
+    <div class="card">
+      <h2 class="privacy-yes">What IS collected</h2>
+      <ul id="tp-yes" style="padding-left:1.2em;line-height:1.65;font-size:.92em"></ul>
+    </div>
+
+    <div class="card">
+      <h2 class="privacy-no">What is NEVER collected</h2>
+      <ul id="tp-no" style="padding-left:1.2em;line-height:1.65;font-size:.92em"></ul>
+      <p id="tp-proof" style="color:var(--muted);font-size:.85em;margin-bottom:0;line-height:1.5"></p>
+    </div>
+
+    <div class="card">
+      <h2>AI activity</h2>
+      <p style="color:var(--muted);font-size:.88em;margin-top:0">
+        Every judgment the AI made and what the operator decided about it.
+        No raw prompts or images are shown — those stay with the operator.
+      </p>
+      <div id="tp-decisions"><em style="color:var(--muted)">Loading…</em></div>
+    </div>
+
+    <div class="card">
+      <h2>Community feedback</h2>
+      <div id="tp-feedback"><em style="color:var(--muted)">Loading…</em></div>
+    </div>
+
+    <div class="card">
+      <h2>Verify the device yourself</h2>
+      <p style="color:var(--muted);font-size:.9em;line-height:1.55">
+        The sensor exposes its own status page. Open it directly to confirm
+        the system is working with the data shown above:
+      </p>
+      <a id="tp-verify" href="#" target="_blank" rel="noopener"
+         style="display:inline-block;padding:.6em 1em;background:var(--accent);color:white;border-radius:8px;text-decoration:none;font-weight:600">
+        Open device /health →
+      </a>
     </div>
   </section>
 
@@ -434,6 +589,7 @@ curl /api/diagnostics</pre>
 <nav class="tabs">
   <button data-tab="individual" class="active">Me</button>
   <button data-tab="operator">Operator</button>
+  <button data-tab="transparency">Public</button>
   <button data-tab="chat">Chat</button>
   <button data-tab="diagnostics">Diag</button>
   <button data-tab="privacy">Privacy</button>
