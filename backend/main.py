@@ -561,20 +561,67 @@ async def chat_endpoint(body: ChatBody):
 
 @app.post("/api/generate-report")
 async def generate_report():
-    if len(spatial_observations) < 1:
+    """Substantive Space Design Report. Feeds the AI every signal we have
+    (live occupancy, visits, feedback, observations, prior decisions,
+    occupancy history) and returns BOTH a structured JSON report and a
+    rendered Markdown version. The structured form is what the UI uses
+    to render proper sections + colour-coded severities."""
+    occupancy_now = csi_detector.get_occupancy()
+    visit_stats = store.visit_stats()
+    feedback = store.list_community_feedback(limit=50)
+    decisions = store.list_ai_decisions(limit=20, public=True)
+    occ_history = store.occupancy_history(limit=300)
+
+    # Need *something* to reason about. We allow generation when there's
+    # any data — observations, visits, or feedback — not just observations.
+    if (len(spatial_observations) == 0 and visit_stats["total_visits"] == 0
+            and len(feedback) == 0):
         return JSONResponse(
-            {"error": "No spatial observations yet. Trigger at least one threshold event first."},
+            {"error": "No data yet. Have someone check in, submit feedback, "
+             "or trigger a threshold event first."},
             status_code=400,
         )
-    text = await report_generator.generate_space_report(spatial_observations)
+
+    result = await report_generator.generate_space_report(
+        spatial_observations,
+        occupancy_now=occupancy_now,
+        visit_stats=visit_stats,
+        community_feedback=feedback,
+        recent_decisions=decisions,
+        occupancy_history=occ_history,
+    )
+
+    structured = result["structured"]
+    summary_for_log = (
+        structured.get("executive_summary")
+        or f"Space Design Report from {len(spatial_observations)} observations"
+    )[:200]
+
     store.add_ai_decision(
         decision_type="space_report",
-        model=ai_provider.active_model(),
-        summary=f"Space Design Report from {len(spatial_observations)} observations",
-        raw_input={"observation_count": len(spatial_observations)},
-        raw_output={"report": text},
+        model=result["model"],
+        summary=summary_for_log,
+        raw_input={
+            "observation_count": len(spatial_observations),
+            "visit_stats": visit_stats,
+            "feedback_count": len(feedback),
+        },
+        raw_output={"structured": structured},
     )
-    return {"report": text, "observation_count": len(spatial_observations)}
+
+    return {
+        "report": result["markdown"],     # legacy field — keeps existing tests/clients working
+        "report_markdown": result["markdown"],
+        "report_structured": structured,
+        "model": result["model"],
+        "context": {
+            "observation_count": len(spatial_observations),
+            "visit_count": visit_stats["total_visits"],
+            "feedback_count": len(feedback),
+        },
+        # Old field name kept for backwards compatibility with existing tests
+        "observation_count": len(spatial_observations),
+    }
 
 
 # ---------- Governance endpoints: AI decision log + community feedback + transparency ----------
