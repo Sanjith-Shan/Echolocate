@@ -182,6 +182,49 @@ zero brittleness, served as static files by FastAPI directly.
    asserts the SQLite schema has *no* column named image/photo/frame/jpeg/
    snapshot_data — privacy-by-architecture enforced at the schema level.
 
+### Phase 8 — Governance & Collaboration lens (track-aligned redesign)
+
+User asked us to apply the hackathon track lens — "Governance &
+Collaboration" — and to write four user stories that surface real
+needs. Five concrete gaps came out of that exercise:
+
+1. **The watched had no way to verify the watcher.** Privacy-by-architecture
+   was a *claim* visible only to operators or developers. Now there's a
+   public Transparency tab + `/api/transparency` endpoint that anyone with
+   the URL can audit, listing the privacy invariants and linking to the
+   device's own /health for end-to-end verification.
+
+2. **AI judgments were unaccountable.** Every Claude (or stub) judgment
+   now writes to `ai_decisions` — operator gets a card with Considered /
+   Accept / Reject + a notes field; the same record (redacted) shows up on
+   the public Transparency page so the institution's decisions are part of
+   the public record. `raw_input` and `raw_output` stay private to the
+   operator; the public sees the summary + status + notes.
+
+3. **Operator UX was engineer-speak.** Plain-language toggle in the
+   operator dashboard, defaults ON, persisted in localStorage. Hides the
+   stream-health, variance, ratio cards in plain mode — flip it on for
+   debugging.
+
+4. **No community voice.** Anonymous feedback form on the Individual view
+   (concern / suggestion / praise + free text). Submissions appear on the
+   operator dashboard *and* the public Transparency page immediately. No
+   identifiers ever — `community_feedback` table has no token, IP, name,
+   email column. Verified by code review and by `test_storage.py`.
+
+5. **Six tabs now, in plain order:** Me · Operator · **Public** · Chat
+   · Diag · Privacy. The "Public" tab is the headline governance feature
+   and is the literal embodiment of the privacy-by-architecture claim.
+
+User stories at `docs/USER_STORIES.md` (four personas: pandemic-era student,
+pre-pandemic regular, small-business operator, developer self-review).
+
+**Test coverage went from 36 → 47** (+11 governance tests). New tests
+explicitly verify the privacy invariant in code: the public transparency
+endpoint must not leak `raw_input` or `raw_output`, and the `what_is_NEVER_collected`
+list must contain photo/face/name/email/ip/mac. If a future change breaks
+those, pytest fails.
+
 ### Phase 7 — Hardening pass (after first review)
 
 User asked us to find and remove blockers, and to make the system trivially

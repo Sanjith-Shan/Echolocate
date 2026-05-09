@@ -177,9 +177,14 @@ long as the Vision request takes. The image never touches disk.
 - [x] Backend (CSI parser, FastAPI, all stub-friendly when API keys missing)
 - [x] `/api/diagnostics` + `/api/firmware-status` — green/red system health
 - [x] Auto-loaded `.env` from project root — drop the key, it works
-- [x] PWA (Individual / Operator / Chat / Diagnostics / Privacy)
+- [x] **Governance surface:** AI decision log, operator accept/reject loop,
+      public transparency page, anonymous community feedback
+- [x] PWA (Me / Operator / **Public** / Chat / Diag / Privacy)
+- [x] Plain-language toggle (defaults on; non-technical operators can use
+      the dashboard without seeing "variance ratio")
 - [x] One-command demo launcher (`./run-demo.sh`)
-- [x] **36 passing tests** — unit + 6 end-to-end fixtures booting full stack
+- [x] **47 passing tests** — privacy invariants enforced in test code,
+      not just docs (e.g. public transparency must not leak raw I/O)
 
 Open before hackathon day:
 
