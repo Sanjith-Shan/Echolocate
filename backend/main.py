@@ -147,12 +147,26 @@ async def monitoring_loop(stop_event: threading.Event) -> None:
             connected_clients.discard(ws)
 
 
+def _summarize_spatial(spatial: dict) -> str:
+    """One-line plain-language summary of a spatial analysis result."""
+    if spatial.get("_no_camera"):
+        return "Threshold breach detected. Camera not available — metadata-only record."
+    n = spatial.get("total_people_visible", "?")
+    density = spatial.get("overall_density", "?")
+    chokes = spatial.get("chokepoints") or []
+    if chokes:
+        return f"~{n} people, {density} density. Chokepoint near: {', '.join(chokes[:2])}"
+    return f"~{n} people, {density} density. No chokepoint flagged."
+
+
 async def _capture_and_analyze(occupancy: dict) -> None:
     """Capture single frame → Claude Vision → accumulate metadata → DELETE image."""
     image_b64 = camera.capture_and_encode()
     if not image_b64:
-        # No camera; record a metadata-only observation so the dashboard still gets
-        # something on threshold breach. Spatial fields are unknown.
+        # No camera; record a metadata-only observation so the dashboard still
+        # gets something on threshold breach. Even with no AI involved, it's a
+        # decision the SYSTEM made (it fired the camera trigger), so we still
+        # log it in the AI decision table for transparency.
         observation = {
             "timestamp": datetime.now().isoformat(),
             "csi_occupancy": occupancy,
@@ -160,6 +174,13 @@ async def _capture_and_analyze(occupancy: dict) -> None:
         }
         spatial_observations.append(observation)
         store.add_observation(observation)
+        store.add_ai_decision(
+            decision_type="spatial_analysis",
+            model="none",
+            summary=_summarize_spatial(observation),
+            raw_input={"csi_occupancy": occupancy, "trigger": "threshold_breach"},
+            raw_output={"_no_camera": True},
+        )
         return
 
     spatial = await spatial_analyzer.analyze_snapshot(image_b64)
@@ -174,6 +195,17 @@ async def _capture_and_analyze(occupancy: dict) -> None:
     spatial["csi_occupancy"] = occupancy
     spatial_observations.append(spatial)
     store.add_observation(spatial)
+
+    # Governance: log every AI judgment so the operator can review / override.
+    # We never write the image — only the structured analysis.
+    summary = _summarize_spatial(spatial)
+    store.add_ai_decision(
+        decision_type="spatial_analysis",
+        model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5") if os.getenv("ANTHROPIC_API_KEY") else "stub",
+        summary=summary,
+        raw_input={"csi_occupancy": occupancy, "trigger": "threshold_breach"},
+        raw_output=spatial,
+    )
 
     # Notify opted-in users that the space is crowded
     if occupancy.get("level") in ("moderate", "high"):
@@ -323,6 +355,13 @@ async def report_positive(body: ReportPositiveBody):
 async def chat_endpoint(body: ChatBody):
     occupancy = csi_detector.get_occupancy()
     text = await chat_mod.chat(body.message, occupancy, spatial_observations)
+    store.add_ai_decision(
+        decision_type="chat",
+        model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5") if os.getenv("ANTHROPIC_API_KEY") else "stub",
+        summary=f"Q: {body.message[:80]}",
+        raw_input={"message": body.message, "occupancy": occupancy},
+        raw_output={"response": text},
+    )
     return {"response": text}
 
 
@@ -334,7 +373,115 @@ async def generate_report():
             status_code=400,
         )
     text = await report_generator.generate_space_report(spatial_observations)
+    store.add_ai_decision(
+        decision_type="space_report",
+        model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5") if os.getenv("ANTHROPIC_API_KEY") else "stub",
+        summary=f"Space Design Report from {len(spatial_observations)} observations",
+        raw_input={"observation_count": len(spatial_observations)},
+        raw_output={"report": text},
+    )
     return {"report": text, "observation_count": len(spatial_observations)}
+
+
+# ---------- Governance endpoints: AI decision log + community feedback + transparency ----------
+
+class DecisionUpdate(BaseModel):
+    status: str   # 'pending' | 'considered' | 'accepted' | 'rejected'
+    notes: Optional[str] = None
+
+
+class FeedbackBody(BaseModel):
+    sentiment: str = "concern"   # 'concern' | 'praise' | 'suggestion'
+    message: str
+    zone: Optional[str] = "main"
+
+
+@app.get("/api/decisions")
+async def list_decisions(limit: int = 100):
+    """Operator view of every AI judgment + their decisions on each."""
+    return {
+        "decisions": store.list_ai_decisions(limit=limit, public=False),
+        "stats": store.ai_decision_stats(),
+    }
+
+
+@app.post("/api/decisions/{decision_id}")
+async def update_decision(decision_id: int, body: DecisionUpdate):
+    ok = store.update_ai_decision(decision_id, status=body.status, notes=body.notes)
+    if not ok:
+        return JSONResponse({"error": "Unknown decision_id or invalid status"}, status_code=400)
+    return {"status": "ok"}
+
+
+@app.post("/api/community-feedback")
+async def submit_feedback(body: FeedbackBody):
+    """Anonymous community feedback — no identifiers, ever."""
+    msg = (body.message or "").strip()
+    if not msg:
+        return JSONResponse({"error": "Empty message"}, status_code=400)
+    fid = store.add_community_feedback(
+        sentiment=body.sentiment, message=msg, zone=body.zone
+    )
+    return {"id": fid, "status": "ok"}
+
+
+@app.get("/api/community-feedback")
+async def list_feedback(limit: int = 50):
+    return {"feedback": store.list_community_feedback(limit=limit)}
+
+
+@app.get("/api/transparency")
+async def transparency():
+    """Public, no-auth endpoint. What the watched can see about the watcher.
+
+    The shape of THIS endpoint is itself a privacy claim — it's the full set
+    of facts the system is willing to expose. Anything not here, the system
+    doesn't have. Use it as the contract surface."""
+    occupancy = csi_detector.get_occupancy()
+    plain_level = {
+        "calibrating": "warming up", "empty": "calm", "low": "calm",
+        "moderate": "busy", "high": "crowded",
+    }.get(occupancy.get("level"), "unknown")
+
+    decisions_today = store.list_ai_decisions(limit=20, public=True)
+    feedback = store.list_community_feedback(limit=10)
+
+    return {
+        "right_now": {
+            "plain_status": plain_level,
+            "raw_level": occupancy.get("level"),
+            "estimate": occupancy.get("count_estimate"),
+        },
+        "ai_activity": {
+            "total_decisions": store.ai_decision_stats()["total"],
+            "recent": decisions_today,
+        },
+        "community_feedback_recent": feedback,
+        "privacy_invariants": {
+            "what_is_collected": [
+                "Aggregate occupancy levels (calm / busy / crowded)",
+                "Anonymous rotating tokens (15-min rotation, opt-in only)",
+                "Zone+time pairs you visited (only if you opted in)",
+                "Spatial metadata from snapshot-triggered AI analysis",
+                "Anonymous community feedback (no identifiers)",
+            ],
+            "what_is_NEVER_collected": [
+                "Photos, video, or audio",
+                "Faces or biometric features",
+                "Names, email addresses, phone numbers",
+                "Device fingerprints, IP addresses, MAC addresses",
+                "Browsing or location history outside this space",
+            ],
+            "schema_proof": (
+                "Proof: the SQLite schema literally has no column for any of "
+                "the above. See backend/storage.py — verifiable by code review."
+            ),
+        },
+        "device": {
+            "url": FIRMWARE_HTTP_URL,
+            "verify_yourself": f"{FIRMWARE_HTTP_URL.rstrip('/')}/health",
+        },
+    }
 
 
 @app.post("/api/recalibrate")
