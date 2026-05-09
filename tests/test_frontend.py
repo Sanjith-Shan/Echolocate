@@ -34,6 +34,10 @@ def _wait_for(url: str, timeout: float = 15.0) -> None:
 def backend(tmp_path):
     api = _free_port()
     env = os.environ.copy()
+    # Tests must never burn real API tokens. Force stub mode by
+    # blanking any AI keys the parent shell or .env may have set.
+    env["ANTHROPIC_API_KEY"] = ""
+    env["OPENAI_API_KEY"] = ""
     # Point at a non-existent serial source — backend still serves the frontend.
     env["SERIAL_PORT"] = "tcp://127.0.0.1:1"
     env["ECHOLOCATE_DB"] = str(tmp_path / "fe.db")

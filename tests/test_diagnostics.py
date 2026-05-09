@@ -42,6 +42,10 @@ def stack(tmp_path):
         cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     env = os.environ.copy()
+    # Tests must never burn real API tokens. Force stub mode by
+    # blanking any AI keys the parent shell or .env may have set.
+    env["ANTHROPIC_API_KEY"] = ""
+    env["OPENAI_API_KEY"] = ""
     env["SERIAL_PORT"] = f"tcp://127.0.0.1:{sim_tcp}"
     env["FIRMWARE_HTTP_URL"] = f"http://127.0.0.1:{sim_http}"
     env["ECHOLOCATE_DB"] = str(db)
@@ -97,7 +101,7 @@ def test_diagnostics_returns_all_expected_checks(stack):
     data = r.json()
     ids = [c["id"] for c in data["checks"]]
     for required in ("csi_stream", "calibration", "firmware_reachable",
-                     "anthropic", "vapid", "camera"):
+                     "ai_provider", "vapid", "camera"):
         assert required in ids, f"missing check {required}"
 
     # The two structural checks must be green when the stack is healthy
@@ -111,7 +115,7 @@ def test_diagnostics_returns_all_expected_checks(stack):
 
     # Failing checks must include actionable blocker text
     for c in data["checks"]:
-        if not c["ok"] and c["id"] in ("anthropic", "vapid"):
+        if not c["ok"] and c["id"] in ("ai_provider", "vapid"):
             assert c["blocker"], f"{c['id']} should suggest a fix when not ok"
 
 

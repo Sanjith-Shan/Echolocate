@@ -52,6 +52,10 @@ def stack(tmp_path):
         cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     env = os.environ.copy()
+    # Tests must never burn real API tokens. Force stub mode by
+    # blanking any AI keys the parent shell or .env may have set.
+    env["ANTHROPIC_API_KEY"] = ""
+    env["OPENAI_API_KEY"] = ""
     env["SERIAL_PORT"]       = f"tcp://127.0.0.1:{sim_tcp}"
     env["FIRMWARE_HTTP_URL"] = f"http://127.0.0.1:{sim_http}"
     env["ECHOLOCATE_DB"]     = str(db)
