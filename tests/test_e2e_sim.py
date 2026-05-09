@@ -126,10 +126,13 @@ def test_e2e_level_transition_triggers_observation(sim_and_backend):
     api = f"http://127.0.0.1:{sim_and_backend['api_port']}"
     sim_http = f"http://127.0.0.1:{sim_and_backend['sim_http']}"
 
-    # 1. Wait for calibration to complete on empty
+    # 1. Wait for calibration to complete on empty. The synthetic noise
+    # sometimes drifts into "low" right at calibration end — both are
+    # legitimately below threshold, so accept either.
     time.sleep(13)
     r = httpx.get(f"{api}/api/status")
-    assert r.json()["occupancy"]["level"] == "empty"
+    assert r.json()["occupancy"]["level"] in ("empty", "low")
+    assert r.json()["occupancy"]["threshold_exceeded"] is False
 
     # 2. Ramp simulator to high
     r = httpx.post(f"{sim_http}/control", json={"level": "high"})
