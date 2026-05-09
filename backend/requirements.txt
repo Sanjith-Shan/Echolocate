@@ -6,7 +6,7 @@ opencv-python>=4.9; platform_system != "Linux" or platform_machine == "x86_64"
 anthropic>=0.40
 pywebpush>=2.0
 py-vapid>=1.9
-python-dotenv>=1.0
+python-dotenv>=1.0   # auto-loaded by backend/main.py — drop a .env at project root and you're set
 websockets>=12
 pydantic>=2.7
 aiosqlite>=0.20

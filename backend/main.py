@@ -28,6 +28,23 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
 
+# Auto-load .env from the project root or the backend dir so users can drop
+# their ANTHROPIC_API_KEY / VAPID keys in a single file and the whole pipeline
+# wakes up without re-exporting anything.
+try:
+    from dotenv import load_dotenv
+    _here = os.path.dirname(os.path.abspath(__file__))
+    _root = os.path.abspath(os.path.join(_here, ".."))
+    for _candidate in (
+        os.path.join(_root, ".env"),
+        os.path.join(_here, ".env"),
+    ):
+        if os.path.isfile(_candidate):
+            load_dotenv(_candidate, override=False)
+            print(f"[backend] loaded env from {_candidate}")
+except ImportError:
+    pass  # python-dotenv is optional; explicit env vars still work
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
