@@ -5,7 +5,15 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+from datetime import datetime, timezone
 from typing import Optional
+
+
+def _utc_now_iso() -> str:
+    """All timestamps in storage are UTC ISO-8601 with 'Z'. The API contract
+    is documented: clients should send UTC. Fixes a real bug we hit where
+    local-time visits couldn't be matched against UTC broadcast windows."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 SCHEMA = """
@@ -60,6 +68,37 @@ CREATE TABLE IF NOT EXISTS community_feedback (
 );
 CREATE INDEX IF NOT EXISTS idx_cf_ts ON community_feedback(created_at);
 
+-- Persistent visit log. The token_id is the per-user pseudonym chosen by the
+-- client; the system does not know who that is. Used to power exposure
+-- broadcasts ("everyone who visited Main between 12:00 and 13:00").
+CREATE TABLE IF NOT EXISTS visits (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_id                 TEXT NOT NULL,
+    rotating_id              TEXT,
+    zone                     TEXT NOT NULL,
+    visited_at               TEXT NOT NULL,
+    self_reported_crowded    INTEGER DEFAULT 0,
+    self_reported_sick       INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_visits_zone_time ON visits(zone, visited_at);
+CREATE INDEX IF NOT EXISTS idx_visits_token     ON visits(token_id);
+
+-- In-app notification inbox per token. Consumers fetch /api/consumer/notifications
+-- with their own token_id to read; business broadcasts write here, then push
+-- notifications fire (best-effort) over the existing pywebpush path.
+CREATE TABLE IF NOT EXISTS notifications (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_id          TEXT NOT NULL,
+    created_at        TEXT NOT NULL,
+    notification_type TEXT,        -- 'exposure' | 'crowding' | 'general'
+    title             TEXT,
+    body              TEXT,
+    zone              TEXT,
+    exposure_date     TEXT,        -- when the recipient was potentially exposed
+    read_at           TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_notif_token ON notifications(token_id, created_at);
+
 -- Privacy invariant in the schema itself: there's nowhere to put an image.
 -- And nowhere to put a name, email, IP, MAC, device fingerprint, or any
 -- other identifier of the people whose space this is. This is intentional.
@@ -81,7 +120,7 @@ class Store:
                 spatial_issue, chokepoints, clusters, raw_metadata)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                observation.get("timestamp", time.strftime("%Y-%m-%dT%H:%M:%S")),
+                observation.get("timestamp", _utc_now_iso()),
                 (observation.get("csi_occupancy") or {}).get("level"),
                 (observation.get("csi_occupancy") or {}).get("variance"),
                 observation.get("total_people_visible"),
@@ -102,7 +141,7 @@ class Store:
                (timestamp, level, variance, variance_ratio, count_estimate)
                VALUES (?, ?, ?, ?, ?)""",
             (
-                time.strftime("%Y-%m-%dT%H:%M:%S"),
+                _utc_now_iso(),
                 occupancy.get("level"),
                 occupancy.get("variance"),
                 occupancy.get("variance_ratio"),
@@ -131,7 +170,7 @@ class Store:
                (created_at, decision_type, model, summary, raw_input, raw_output)
                VALUES (?, ?, ?, ?, ?, ?)""",
             (
-                time.strftime("%Y-%m-%dT%H:%M:%S"),
+                _utc_now_iso(),
                 decision_type, model, summary,
                 json.dumps(raw_input or {}),
                 json.dumps(raw_output or {}),
@@ -175,7 +214,7 @@ class Store:
                SET operator_status = ?, operator_notes = ?, operator_at = ?
                WHERE id = ?""",
             (status, notes,
-             time.strftime("%Y-%m-%dT%H:%M:%S"),
+             _utc_now_iso(),
              decision_id),
         )
         self._conn.commit()
@@ -201,7 +240,7 @@ class Store:
         c.execute(
             """INSERT INTO community_feedback (created_at, sentiment, message, zone)
                VALUES (?, ?, ?, ?)""",
-            (time.strftime("%Y-%m-%dT%H:%M:%S"),
+            (_utc_now_iso(),
              sentiment, message[:1000], zone),
         )
         self._conn.commit()
@@ -219,6 +258,137 @@ class Store:
              "message": r[3], "zone": r[4]}
             for r in c.fetchall()
         ]
+
+    # ---------- Visits ----------
+
+    def add_visit(self, *, token_id: str, zone: str, rotating_id: str | None = None,
+                  visited_at: str | None = None,
+                  self_reported_crowded: bool = False,
+                  self_reported_sick: bool = False) -> int:
+        c = self._conn.cursor()
+        c.execute(
+            """INSERT INTO visits
+               (token_id, rotating_id, zone, visited_at,
+                self_reported_crowded, self_reported_sick)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                token_id, rotating_id, zone,
+                visited_at or _utc_now_iso(),
+                1 if self_reported_crowded else 0,
+                1 if self_reported_sick else 0,
+            ),
+        )
+        self._conn.commit()
+        return c.lastrowid or 0
+
+    def visits_for_token(self, token_id: str, limit: int = 200) -> list[dict]:
+        c = self._conn.cursor()
+        c.execute(
+            """SELECT id, zone, visited_at, self_reported_crowded, self_reported_sick
+               FROM visits WHERE token_id = ?
+               ORDER BY id DESC LIMIT ?""",
+            (token_id, limit),
+        )
+        return [
+            {"id": r[0], "zone": r[1], "visited_at": r[2],
+             "crowded": bool(r[3]), "sick": bool(r[4])}
+            for r in c.fetchall()
+        ]
+
+    def visits_in_window(self, *, zone: str, time_from: str,
+                         time_to: str) -> list[dict]:
+        """Used by the business broadcast endpoint: who was at zone X between
+        `time_from` and `time_to`?"""
+        c = self._conn.cursor()
+        c.execute(
+            """SELECT DISTINCT token_id FROM visits
+               WHERE zone = ? AND visited_at BETWEEN ? AND ?""",
+            (zone, time_from, time_to),
+        )
+        return [{"token_id": r[0]} for r in c.fetchall()]
+
+    def visit_stats(self, since: str | None = None) -> dict:
+        """Aggregate counts for the business dashboard."""
+        c = self._conn.cursor()
+        if since:
+            c.execute("SELECT COUNT(*), COUNT(DISTINCT token_id) FROM visits WHERE visited_at >= ?", (since,))
+        else:
+            c.execute("SELECT COUNT(*), COUNT(DISTINCT token_id) FROM visits")
+        total, unique = c.fetchone()
+
+        if since:
+            c.execute("SELECT COUNT(*) FROM visits WHERE self_reported_crowded = 1 AND visited_at >= ?", (since,))
+        else:
+            c.execute("SELECT COUNT(*) FROM visits WHERE self_reported_crowded = 1")
+        crowded = c.fetchone()[0]
+
+        if since:
+            c.execute("SELECT COUNT(*) FROM visits WHERE self_reported_sick = 1 AND visited_at >= ?", (since,))
+        else:
+            c.execute("SELECT COUNT(*) FROM visits WHERE self_reported_sick = 1")
+        sick = c.fetchone()[0]
+
+        return {
+            "total_visits": total or 0,
+            "unique_tokens": unique or 0,
+            "self_reported_crowded": crowded or 0,
+            "self_reported_sick": sick or 0,
+        }
+
+    # ---------- Notifications ----------
+
+    def add_notification(self, *, token_id: str, notification_type: str,
+                         title: str, body: str, zone: str | None = None,
+                         exposure_date: str | None = None) -> int:
+        if notification_type not in ("exposure", "crowding", "general"):
+            notification_type = "general"
+        c = self._conn.cursor()
+        c.execute(
+            """INSERT INTO notifications
+               (token_id, created_at, notification_type, title, body, zone, exposure_date)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (token_id, _utc_now_iso(),
+             notification_type, title, body, zone, exposure_date),
+        )
+        self._conn.commit()
+        return c.lastrowid or 0
+
+    def notifications_for_token(self, token_id: str, limit: int = 50,
+                                unread_only: bool = False) -> list[dict]:
+        c = self._conn.cursor()
+        if unread_only:
+            c.execute(
+                """SELECT id, created_at, notification_type, title, body,
+                          zone, exposure_date, read_at
+                   FROM notifications
+                   WHERE token_id = ? AND read_at IS NULL
+                   ORDER BY id DESC LIMIT ?""",
+                (token_id, limit),
+            )
+        else:
+            c.execute(
+                """SELECT id, created_at, notification_type, title, body,
+                          zone, exposure_date, read_at
+                   FROM notifications WHERE token_id = ?
+                   ORDER BY id DESC LIMIT ?""",
+                (token_id, limit),
+            )
+        return [
+            {"id": r[0], "created_at": r[1], "type": r[2], "title": r[3],
+             "body": r[4], "zone": r[5], "exposure_date": r[6],
+             "read": r[7] is not None}
+            for r in c.fetchall()
+        ]
+
+    def mark_notification_read(self, notification_id: int, token_id: str) -> bool:
+        c = self._conn.cursor()
+        c.execute(
+            """UPDATE notifications SET read_at = ?
+               WHERE id = ? AND token_id = ? AND read_at IS NULL""",
+            (_utc_now_iso(), notification_id, token_id),
+        )
+        self._conn.commit()
+        return c.rowcount > 0
 
     def occupancy_history(self, limit: int = 720) -> list[dict]:
         """Last `limit` occupancy entries. 720 ≈ 1 hour at 1Hz logging."""

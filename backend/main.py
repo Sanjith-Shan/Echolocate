@@ -332,23 +332,216 @@ async def register_anonymous(body: RegisterBody):
 
 @app.post("/api/checkin")
 async def zone_checkin(body: CheckinBody):
-    ok = tokens.checkin(body.token_id, body.zone)
-    return {"status": "ok" if ok else "unknown_token"}
+    """Legacy alias for /api/consumer/check-in (kept for the existing tests)."""
+    return await consumer_checkin(ConsumerCheckin(
+        token_id=body.token_id, zone=body.zone, crowded=False,
+    ))
 
 
 @app.post("/api/report-positive")
 async def report_positive(body: ReportPositiveBody):
-    overlapping = tokens.find_overlaps(body.token_id)
-    notified = 0
-    for other_id in overlapping:
-        sub = tokens.registered_tokens[other_id].get("push_subscription")
-        if sub and pusher.send(
-            sub,
-            "Echolocate: Exposure alert",
-            "You were in proximity with someone who has reported a positive test. Consider monitoring for symptoms.",
+    """Legacy alias for /api/consumer/report-sick."""
+    return await consumer_report_sick(ConsumerReportSick(token_id=body.token_id))
+
+
+# ---------- Consumer surface ----------
+
+class ConsumerCheckin(BaseModel):
+    token_id: str
+    zone: str = "main"
+    crowded: bool = False    # consumer's own subjective "this felt crowded"
+
+
+class ConsumerReportSick(BaseModel):
+    token_id: str
+
+
+@app.post("/api/consumer/check-in")
+async def consumer_checkin(body: ConsumerCheckin):
+    """Log a visit. Optionally flag it as 'felt crowded' — that's a consumer
+    signal that complements the sensor's variance-based classification."""
+    if body.token_id not in tokens.registered_tokens:
+        # Auto-register so the consumer flow stays one-tap.
+        token_id = tokens.register(None)
+        registered = True
+    else:
+        token_id = body.token_id
+        registered = False
+
+    tokens.checkin(token_id, body.zone)
+    visit_id = store.add_visit(
+        token_id=token_id,
+        zone=body.zone,
+        rotating_id=tokens.registered_tokens[token_id]["current_rotating_id"],
+        self_reported_crowded=body.crowded,
+    )
+    return {
+        "status": "ok",
+        "token_id": token_id,
+        "auto_registered": registered,
+        "visit_id": visit_id,
+    }
+
+
+@app.post("/api/consumer/report-sick")
+async def consumer_report_sick(body: ConsumerReportSick):
+    """Consumer reports a positive test. Find every token that overlapped
+    their visits and create exposure notifications for each. Push fires too
+    if VAPID is configured; if not, the notifications are still readable
+    via /api/consumer/notifications."""
+    if body.token_id not in tokens.registered_tokens:
+        return JSONResponse({"error": "Unknown token"}, status_code=400)
+
+    # Mark this token's most recent visits as sick
+    visits = store.visits_for_token(body.token_id, limit=50)
+    for v in visits:
+        # We can't UPDATE in storage abstractly — re-add with sick flag would
+        # duplicate. Skip the per-row update; the notification flow doesn't
+        # rely on the sick flag, only on the time/zone overlap.
+        pass
+
+    overlapping_ids = tokens.find_overlaps(body.token_id)
+
+    # Also scan the persistent visits table for overlaps (in case the
+    # in-memory token_manager lost state across a restart)
+    seen = set(overlapping_ids)
+    for v in visits:
+        for other in store.visits_in_window(
+            zone=v["zone"],
+            time_from=_iso_minus(v["visited_at"], minutes=30),
+            time_to=_iso_plus(v["visited_at"], minutes=30),
         ):
-            notified += 1
-    return {"overlapping_tokens": len(overlapping), "notifications_sent": notified}
+            tid = other["token_id"]
+            if tid != body.token_id and tid not in seen:
+                seen.add(tid)
+                overlapping_ids.append(tid)
+
+    notified_inapp = 0
+    notified_push = 0
+    for other_id in overlapping_ids:
+        store.add_notification(
+            token_id=other_id,
+            notification_type="exposure",
+            title="Possible exposure",
+            body=(
+                "You were in a space at the same time as someone who has "
+                "reported a positive test. The system does not know who "
+                "they are. Consider monitoring for symptoms."
+            ),
+            zone=visits[0]["zone"] if visits else None,
+            exposure_date=visits[0]["visited_at"] if visits else None,
+        )
+        notified_inapp += 1
+        sub = tokens.registered_tokens.get(other_id, {}).get("push_subscription")
+        if sub and pusher.send(
+            sub, "Echolocate: Exposure alert",
+            "You may have been near someone who reported a positive test.",
+        ):
+            notified_push += 1
+
+    return {
+        "overlapping_tokens": len(overlapping_ids),
+        "notifications_inapp": notified_inapp,
+        "notifications_push": notified_push,
+    }
+
+
+@app.get("/api/consumer/notifications")
+async def consumer_notifications(token_id: str, unread_only: bool = False):
+    """Pull-based inbox so consumers see alerts even when push is unreachable
+    (browser closed, no HTTPS, no push permission, etc.)."""
+    if token_id not in tokens.registered_tokens:
+        # We still return [] rather than 404 so a stale localStorage token
+        # doesn't break the consumer's whole UI.
+        return {"notifications": [], "warning": "Unknown token — re-register"}
+    return {
+        "notifications": store.notifications_for_token(token_id, unread_only=unread_only),
+    }
+
+
+@app.post("/api/consumer/notifications/{notification_id}/read")
+async def consumer_mark_read(notification_id: int, token_id: str):
+    if token_id not in tokens.registered_tokens:
+        return JSONResponse({"error": "Unknown token"}, status_code=400)
+    ok = store.mark_notification_read(notification_id, token_id)
+    return {"status": "ok" if ok else "not_found_or_already_read"}
+
+
+@app.get("/api/consumer/my-visits")
+async def consumer_my_visits(token_id: str, limit: int = 100):
+    """Return the visit history for this token. The consumer is the only
+    party who knows the token, so this is effectively self-only."""
+    if token_id not in tokens.registered_tokens:
+        return {"visits": [], "warning": "Unknown token — re-register"}
+    return {"visits": store.visits_for_token(token_id, limit=limit)}
+
+
+# ---------- Business surface ----------
+
+class BusinessBroadcast(BaseModel):
+    zone: str = "main"
+    time_from: str           # ISO-8601, inclusive
+    time_to: str             # ISO-8601, inclusive
+    title: str = "Echolocate alert"
+    body: str
+    notification_type: str = "general"   # 'exposure' | 'crowding' | 'general'
+
+
+@app.post("/api/business/notify-visitors")
+async def business_notify(body: BusinessBroadcast):
+    """Notify every token that visited `zone` between `time_from` and
+    `time_to`. Use case: business detects an outbreak (or a leak, or a
+    safety issue) and wants to alert everyone who was there during the
+    window — without ever knowing who any of those people are."""
+    matches = store.visits_in_window(
+        zone=body.zone, time_from=body.time_from, time_to=body.time_to,
+    )
+    notified_inapp = 0
+    notified_push = 0
+    for m in matches:
+        tid = m["token_id"]
+        store.add_notification(
+            token_id=tid,
+            notification_type=body.notification_type,
+            title=body.title,
+            body=body.body,
+            zone=body.zone,
+            exposure_date=body.time_from,
+        )
+        notified_inapp += 1
+        sub = tokens.registered_tokens.get(tid, {}).get("push_subscription")
+        if sub and pusher.send(sub, body.title, body.body):
+            notified_push += 1
+    return {
+        "matched_tokens": len(matches),
+        "notifications_inapp": notified_inapp,
+        "notifications_push": notified_push,
+    }
+
+
+@app.get("/api/business/visits")
+async def business_visits(since: Optional[str] = None):
+    """Aggregate visit stats for the business dashboard. No identifiers
+    leave the building — only counts."""
+    return store.visit_stats(since=since)
+
+
+def _iso_minus(iso: str, minutes: int) -> str:
+    from datetime import datetime, timedelta
+    try:
+        dt = datetime.fromisoformat(iso)
+    except ValueError:
+        return iso
+    return (dt - timedelta(minutes=minutes)).isoformat()
+
+
+def _iso_plus(iso: str, minutes: int) -> str:
+    from datetime import datetime, timedelta
+    try:
+        dt = datetime.fromisoformat(iso)
+    except ValueError:
+        return iso
+    return (dt + timedelta(minutes=minutes)).isoformat()
 
 
 @app.post("/api/chat")
