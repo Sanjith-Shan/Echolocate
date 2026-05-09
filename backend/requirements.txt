@@ -4,6 +4,7 @@ pyserial>=3.5
 numpy>=1.26
 opencv-python>=4.9; platform_system != "Linux" or platform_machine == "x86_64"
 anthropic>=0.40
+openai>=1.30           # alternative to anthropic; selected at runtime by ai_provider.py
 pywebpush>=2.0
 py-vapid>=1.9
 python-dotenv>=1.0   # auto-loaded by backend/main.py — drop a .env at project root and you're set

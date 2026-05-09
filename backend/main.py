@@ -51,6 +51,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import ai_provider
 from . import camera as camera_mod
 from . import chat as chat_mod
 from . import push_notifier
@@ -201,7 +202,7 @@ async def _capture_and_analyze(occupancy: dict) -> None:
     summary = _summarize_spatial(spatial)
     store.add_ai_decision(
         decision_type="spatial_analysis",
-        model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5") if os.getenv("ANTHROPIC_API_KEY") else "stub",
+        model=ai_provider.active_model(),
         summary=summary,
         raw_input={"csi_occupancy": occupancy, "trigger": "threshold_breach"},
         raw_output=spatial,
@@ -550,7 +551,7 @@ async def chat_endpoint(body: ChatBody):
     text = await chat_mod.chat(body.message, occupancy, spatial_observations)
     store.add_ai_decision(
         decision_type="chat",
-        model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5") if os.getenv("ANTHROPIC_API_KEY") else "stub",
+        model=ai_provider.active_model(),
         summary=f"Q: {body.message[:80]}",
         raw_input={"message": body.message, "occupancy": occupancy},
         raw_output={"response": text},
@@ -568,7 +569,7 @@ async def generate_report():
     text = await report_generator.generate_space_report(spatial_observations)
     store.add_ai_decision(
         decision_type="space_report",
-        model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5") if os.getenv("ANTHROPIC_API_KEY") else "stub",
+        model=ai_provider.active_model(),
         summary=f"Space Design Report from {len(spatial_observations)} observations",
         raw_input={"observation_count": len(spatial_observations)},
         raw_output={"report": text},
@@ -761,17 +762,18 @@ async def diagnostics():
             "blocker": fw.get("hint") if not fw.get("reachable") else None,
         },
         {
-            "id": "anthropic",
-            "label": "Anthropic API key",
-            "ok": bool(os.getenv("ANTHROPIC_API_KEY")),
+            "id": "ai_provider",
+            "label": "AI provider",
+            "ok": ai_provider.active_provider() != "stub",
             "detail": (
-                "Configured (Claude Vision + reports + chat enabled)"
-                if os.getenv("ANTHROPIC_API_KEY")
-                else "Not set — system runs in stub mode"
+                f"{ai_provider.active_provider()} ({ai_provider.active_model()})"
+                if ai_provider.active_provider() != "stub"
+                else "No key set — system runs in stub mode"
             ),
             "blocker": (
-                None if os.getenv("ANTHROPIC_API_KEY") else
-                "Drop ANTHROPIC_API_KEY=sk-ant-... into a .env file at the project root."
+                None if ai_provider.active_provider() != "stub" else
+                "Drop ANTHROPIC_API_KEY=sk-ant-... or OPENAI_API_KEY=sk-... "
+                "into a .env file at the project root."
             ),
         },
         {

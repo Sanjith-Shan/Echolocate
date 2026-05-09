@@ -1,10 +1,10 @@
-"""Claude Space Design Report generation from accumulated spatial metadata."""
+"""Space Design Report generation. Uses whichever AI provider is configured."""
 
 from __future__ import annotations
 
 import json
-import os
-from typing import Iterable
+
+from . import ai_provider
 
 REPORT_SYSTEM_PROMPT = """You are Echolocate's Space Intelligence AI. You analyze accumulated spatial metadata from a public space monitoring system to generate Space Design Reports for building operators.
 
@@ -29,19 +29,41 @@ Format your response as a structured Markdown report with sections: Executive Su
 """
 
 
-def _stub_report(observations: list[dict]) -> str:
-    counts = [o.get("total_people_visible", 0) for o in observations]
-    chokes: list[str] = []
-    for o in observations:
-        chokes.extend(o.get("chokepoints", []) or [])
-    top_choke = max(set(chokes), key=chokes.count) if chokes else "none observed"
-    return f"""# Space Design Report (stub — no ANTHROPIC_API_KEY)
+async def generate_space_report(observations: list[dict]) -> str:
+    if not observations:
+        return "_No observations yet — let the system collect at least 3 threshold events first._"
+
+    obs_text = "\n".join([
+        f"- {o.get('timestamp', '?')}: {o.get('spatial_issue', 'N/A')} | "
+        f"Total: {o.get('total_people_visible', '?')} | "
+        f"Chokepoints: {o.get('chokepoints', [])} | "
+        f"Density: {o.get('overall_density', '?')} | "
+        f"Clusters: {json.dumps(o.get('clusters', []))}"
+        for o in observations
+    ])
+
+    user_msg = (
+        f"Generate a Space Design Report from these "
+        f"{len(observations)} spatial observations:\n\n{obs_text}"
+    )
+    text, model = await ai_provider.text_complete(
+        system=REPORT_SYSTEM_PROMPT, user=user_msg, max_tokens=2000,
+    )
+
+    if model == "stub":
+        # Fall back to a structured stub so the report still demonstrates value
+        chokes: list[str] = []
+        for o in observations:
+            chokes.extend(o.get("chokepoints", []) or [])
+        top = max(set(chokes), key=chokes.count) if chokes else "none observed"
+        counts = [o.get("total_people_visible", 0) for o in observations]
+        return f"""# Space Design Report (stub — no API key set)
 
 ## Executive Summary
 
 Across **{len(observations)}** spatial observations, the system saw an
 average of **{sum(counts) / max(len(counts), 1):.1f} people** per snapshot.
-The most-observed chokepoint was: **{top_choke}**.
+The most-observed chokepoint was: **{top}**.
 
 ## Identified Chokepoints
 
@@ -49,12 +71,12 @@ The most-observed chokepoint was: **{top_choke}**.
 
 ## Temporal Patterns
 
-This stub does not analyze time-of-day patterns. Set `ANTHROPIC_API_KEY`
-for the full Claude-generated report.
+This stub does not analyze time-of-day patterns. Add `OPENAI_API_KEY` or
+`ANTHROPIC_API_KEY` to your `.env` for the full AI-generated report.
 
 ## Recommendations
 
-1. (stub) Add `ANTHROPIC_API_KEY` to enable full reasoning.
+1. (stub) Add an API key to enable full reasoning.
 2. (stub) Calibrate CSI variance thresholds to your specific room.
 
 ## Methodology Note
@@ -64,40 +86,4 @@ RAM for ~2 seconds, analyzed for spatial patterns, then explicitly deleted.
 This report is generated from {len(observations)} such metadata records —
 no images were stored.
 """
-
-
-async def generate_space_report(observations: list[dict]) -> str:
-    if not observations:
-        return "_No observations yet — let the system collect at least 3 threshold events first._"
-
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        return _stub_report(observations)
-
-    try:
-        import anthropic
-        client = anthropic.Anthropic()
-
-        obs_text = "\n".join([
-            f"- {o.get('timestamp', '?')}: {o.get('spatial_issue', 'N/A')} | "
-            f"Total: {o.get('total_people_visible', '?')} | "
-            f"Chokepoints: {o.get('chokepoints', [])} | "
-            f"Density: {o.get('overall_density', '?')} | "
-            f"Clusters: {json.dumps(o.get('clusters', []))}"
-            for o in observations
-        ])
-
-        response = client.messages.create(
-            model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5"),
-            max_tokens=2000,
-            system=REPORT_SYSTEM_PROMPT,
-            messages=[{
-                "role": "user",
-                "content": (
-                    f"Generate a Space Design Report from these "
-                    f"{len(observations)} spatial observations:\n\n{obs_text}"
-                ),
-            }],
-        )
-        return response.content[0].text
-    except Exception as e:
-        return f"_Report generation failed: {e}_\n\nFalling back to stub:\n\n{_stub_report(observations)}"
+    return text
