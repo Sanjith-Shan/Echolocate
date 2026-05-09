@@ -26,225 +26,155 @@
   html, body { margin: 0; padding: 0; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    background: var(--bg);
-    color: var(--fg);
+    background: var(--bg); color: var(--fg);
     min-height: 100vh;
-    /* iOS home indicator clearance — falls back to plain 80px on other browsers */
     padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
   }
   header {
     padding: 1.2em 1em 0.6em;
     border-bottom: 1px solid var(--line);
     background: var(--bg);
-    position: sticky;
-    top: 0;
-    z-index: 10;
+    position: sticky; top: 0; z-index: 10;
   }
   header h1 {
-    font-size: 1.4em;
-    margin: 0;
-    color: var(--accent);
-    display: flex;
-    align-items: center;
-    gap: 0.4em;
+    font-size: 1.4em; margin: 0; color: var(--accent);
+    display: flex; align-items: center; gap: 0.4em;
   }
   header .pill {
-    font-size: 0.55em;
-    background: var(--bg2);
-    color: var(--muted);
-    padding: 0.2em 0.6em;
-    border-radius: 999px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    font-size: 0.55em; background: var(--bg2); color: var(--muted);
+    padding: 0.2em 0.6em; border-radius: 999px;
+    text-transform: uppercase; letter-spacing: 0.05em;
   }
   header .pill.conn-up   { background: rgba(34,197,94,0.15);  color: var(--green); }
   header .pill.conn-down { background: rgba(239,68,68,0.15);  color: var(--red); }
-  .check-row {
-    display: flex; align-items: flex-start; gap: 0.6em;
-    padding: 0.6em 0; border-bottom: 1px dotted var(--line);
-  }
-  .check-row:last-child { border-bottom: none; }
-  .check-row .led {
-    width: 12px; height: 12px; border-radius: 50%; margin-top: 0.35em;
-    flex-shrink: 0; box-shadow: 0 0 8px currentColor;
-  }
-  .check-row .led.ok  { background: var(--green); color: var(--green); }
-  .check-row .led.bad { background: var(--red);   color: var(--red); }
-  .check-row .body { flex: 1; min-width: 0; }
-  .check-row .label { font-weight: 600; font-size: 0.95em; }
-  .check-row .detail { color: var(--muted); font-size: 0.85em; margin-top: 0.15em; word-break: break-word; }
-  .check-row .blocker { color: var(--yellow); font-size: 0.82em; margin-top: 0.3em; line-height: 1.4; }
+
   main { padding: 1em; max-width: 760px; margin: 0 auto; }
 
   .card {
-    background: var(--bg2);
-    border-radius: 12px;
-    padding: 1em 1.2em;
-    margin-bottom: 1em;
-    border: 1px solid var(--line);
+    background: var(--bg2); border-radius: 12px;
+    padding: 1em 1.2em; margin-bottom: 1em; border: 1px solid var(--line);
   }
   .card h2 {
-    margin: 0 0 0.6em 0;
-    font-size: 1em;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 600;
+    margin: 0 0 0.6em 0; font-size: 1em; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600;
+  }
+  .card p { margin-top: 0; line-height: 1.55; }
+  .card.collapsed > *:not(h2):not(.collapse-toggle) { display: none; }
+  .collapse-toggle {
+    float: right; font-size: 0.78em; color: var(--accent);
+    cursor: pointer; user-select: none;
   }
 
-  .gauge {
-    display: flex;
-    align-items: center;
-    gap: 1em;
-  }
+  /* Status gauge */
+  .gauge { display: flex; align-items: center; gap: 1em; }
   .gauge .dot {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    box-shadow: 0 0 24px currentColor;
+    width: 60px; height: 60px; border-radius: 50%;
+    flex-shrink: 0; box-shadow: 0 0 24px currentColor;
     transition: background-color 0.4s, color 0.4s;
   }
-  .gauge .label {
-    font-size: 1.6em;
-    text-transform: capitalize;
-    font-weight: 600;
-  }
-  .gauge .sub {
-    color: var(--muted);
-    font-size: 0.85em;
-    margin-top: 0.2em;
-  }
+  .gauge .label { font-size: 1.6em; text-transform: capitalize; font-weight: 600; }
+  .gauge .sub { color: var(--muted); font-size: 0.85em; margin-top: 0.2em; }
   .level-empty       { background: var(--green);   color: var(--green); }
   .level-low         { background: var(--yellow);  color: var(--yellow); }
   .level-moderate    { background: var(--orange);  color: var(--orange); }
   .level-high        { background: var(--red);     color: var(--red); }
   .level-calibrating { background: var(--purple);  color: var(--purple); }
 
+  /* Tabs */
   nav.tabs {
-    display: flex;
-    background: var(--bg);
+    display: flex; background: var(--bg);
     border-top: 1px solid var(--line);
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 10;
-  }
-  nav.tabs {
-    /* iOS home indicator clearance for the bottom nav */
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   nav.tabs button {
-    flex: 1;
-    background: none;
-    border: none;
-    color: var(--muted);
-    padding: 0.9em 0.4em;
-    font-size: 0.78em;
-    cursor: pointer;
+    flex: 1; background: none; border: none; color: var(--muted);
+    padding: 0.95em 0.4em; font-size: 0.85em; cursor: pointer;
     border-top: 3px solid transparent;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    position: relative;
   }
-  nav.tabs button.active {
-    color: var(--accent);
-    border-top-color: var(--accent);
+  nav.tabs button.active { color: var(--accent); border-top-color: var(--accent); }
+  nav.tabs button .badge-count {
+    position: absolute; top: 0.5em; right: 1em;
+    background: var(--red); color: white; border-radius: 999px;
+    padding: 0.05em 0.45em; font-size: 0.65em; font-weight: 700;
+    display: none;
   }
-
-  button.primary {
-    background: var(--accent);
-    color: white;
-    border: none;
-    padding: 0.7em 1.2em;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 0.95em;
-    font-weight: 600;
-  }
-  button.primary:disabled { background: var(--bg2); color: var(--muted); }
-  button.danger { background: var(--red); }
-  button.ghost {
-    background: transparent;
-    color: var(--accent);
-    border: 1px solid var(--line);
-  }
-
-  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.8em; }
-  .stat { background: var(--bg); border-radius: 8px; padding: 0.6em 0.8em; }
-  .stat .v { font-size: 1.4em; font-weight: 600; }
-  .stat .k { font-size: 0.75em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-
-  #spark { width: 100%; height: 80px; background: var(--bg); border-radius: 8px; }
-
-  .obs {
-    border-left: 3px solid var(--accent);
-    padding: 0.6em 0.8em;
-    margin: 0.4em 0;
-    background: var(--bg);
-    border-radius: 0 6px 6px 0;
-    font-size: 0.9em;
-  }
-  .obs .ts { color: var(--muted); font-size: 0.8em; }
-
-  .privacy-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 1em;
-  }
-  @media (min-width: 640px) {
-    .privacy-grid { grid-template-columns: 1fr 1fr; }
-  }
-  .privacy-grid h3 { margin-top: 0; }
-  .privacy-yes { color: var(--green); }
-  .privacy-no  { color: var(--red); }
-  .privacy-grid ul { padding-left: 1.2em; line-height: 1.6; }
+  nav.tabs button .badge-count.show { display: inline-block; }
 
   .view { display: none; }
   .view.active { display: block; }
 
-  .chat-msg { margin: 0.6em 0; padding: 0.6em 0.8em; border-radius: 10px; max-width: 80%; }
-  .chat-msg.user { background: var(--accent); color: white; margin-left: auto; }
-  .chat-msg.bot { background: var(--bg); border: 1px solid var(--line); }
-  .chat-input { display: flex; gap: 0.5em; margin-top: 0.8em; }
-  .chat-input input { flex: 1; padding: 0.6em; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font-size: 1em; }
-
-  pre.report { white-space: pre-wrap; background: var(--bg); padding: 1em; border-radius: 8px; line-height: 1.5; }
-
-  .health-row { display: flex; justify-content: space-between; align-items: center; padding: 0.4em 0; border-bottom: 1px dotted var(--line); font-size: 0.9em; }
-  .health-row:last-child { border-bottom: none; }
-  .health-row .v { color: var(--muted); }
-  .ok { color: var(--green); }
-  .bad { color: var(--red); }
-
-  .toast {
-    position: fixed;
-    bottom: 100px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--bg2);
-    color: var(--fg);
-    padding: 0.7em 1.2em;
-    border-radius: 8px;
-    border: 1px solid var(--line);
-    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.3s;
-    z-index: 100;
+  /* Buttons */
+  button.primary, button.danger, button.ghost, button.big {
+    border: none; border-radius: 8px; cursor: pointer; font-weight: 600;
+    font-family: inherit; transition: filter 0.15s;
   }
-  .toast.show { opacity: 1; }
+  button.primary { background: var(--accent); color: white; padding: 0.7em 1.2em; font-size: 0.95em; }
+  button.danger  { background: var(--red);    color: white; padding: 0.7em 1.2em; font-size: 0.95em; }
+  button.ghost   { background: transparent;   color: var(--accent); border: 1px solid var(--line); padding: 0.65em 1.2em; font-size: 0.92em; }
+  button.big     { background: var(--accent); color: white; padding: 1.1em 1.4em; font-size: 1.1em; width: 100%; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button:hover:not(:disabled) { filter: brightness(1.1); }
 
-  /* Plain-language mode: hide engineer-speak cards entirely */
-  body.plain .techy { display: none !important; }
+  /* Forms */
+  input[type=text], input[type=datetime-local], textarea, select {
+    background: var(--bg); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 0.55em 0.7em; font-family: inherit; font-size: 0.94em; width: 100%;
+  }
+  textarea { min-height: 70px; resize: vertical; }
+  label { font-size: 0.85em; color: var(--muted); display: block; margin-bottom: 0.25em; }
+  .row { display: flex; gap: 0.6em; flex-wrap: wrap; }
+  .row > * { flex: 1; min-width: 140px; }
 
-  /* AI Decision cards (operator + transparency) */
+  /* Toggle */
+  .toggle { display: inline-flex; align-items: center; gap: 0.4em; cursor: pointer; }
+
+  /* Stats grid */
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6em; }
+  .stat { background: var(--bg); border-radius: 8px; padding: 0.6em 0.8em; }
+  .stat .v { font-size: 1.5em; font-weight: 700; }
+  .stat .k { font-size: 0.72em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+  #spark { width: 100%; height: 80px; background: var(--bg); border-radius: 8px; }
+
+  /* Notification cards (consumer) */
+  .notif {
+    background: var(--bg); border-left: 3px solid var(--accent);
+    padding: 0.7em 0.9em; margin: 0.5em 0; border-radius: 0 8px 8px 0;
+    position: relative;
+  }
+  .notif.unread { border-left-color: var(--red); }
+  .notif.exposure { border-left-color: var(--orange); }
+  .notif .meta { font-size: 0.78em; color: var(--muted); }
+  .notif .title { font-weight: 600; margin: 0.3em 0 0.2em; line-height: 1.3; }
+  .notif .body { font-size: 0.9em; line-height: 1.5; color: var(--fg); }
+  .notif .read-btn {
+    position: absolute; top: 0.6em; right: 0.6em;
+    background: transparent; border: none; color: var(--muted);
+    cursor: pointer; font-size: 0.75em;
+  }
+  .notif .read-btn:hover { color: var(--accent); }
+
+  /* Visit history */
+  .visit {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0.45em 0; border-bottom: 1px dotted var(--line); font-size: 0.9em;
+  }
+  .visit:last-child { border-bottom: none; }
+  .visit .when { color: var(--muted); font-size: 0.8em; }
+  .visit .crowded-flag {
+    background: rgba(249,115,22,0.18); color: var(--orange);
+    padding: 0.1em 0.45em; border-radius: 999px; font-size: 0.7em;
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+
+  /* Decision cards (business) */
   .decision {
-    background: var(--bg);
-    border-left: 3px solid var(--accent);
-    padding: .7em .9em;
-    margin: .5em 0;
-    border-radius: 0 8px 8px 0;
+    background: var(--bg); border-left: 3px solid var(--accent);
+    padding: .7em .9em; margin: .5em 0; border-radius: 0 8px 8px 0;
   }
   .decision .row1 {
     display: flex; gap: .5em; align-items: center; flex-wrap: wrap;
@@ -265,35 +195,49 @@
     background: var(--bg2); color: var(--fg); border: 1px solid var(--line);
     cursor: pointer;
   }
-  .decision .actions button:hover { background: var(--line); }
   .decision .notes-input {
     width: 100%; margin-top: .5em; padding: .4em .6em;
     background: var(--bg2); color: var(--fg);
     border: 1px solid var(--line); border-radius: 6px; font-size: .85em;
-    font-family: inherit;
   }
   .decision .notes-display {
-    margin-top: .4em; font-size: .82em; color: var(--muted);
-    font-style: italic;
+    margin-top: .4em; font-size: .82em; color: var(--muted); font-style: italic;
   }
 
-  /* Feedback form */
-  .feedback-form { display: flex; flex-direction: column; gap: .5em; }
-  .feedback-form select,
-  .feedback-form textarea {
-    background: var(--bg); color: var(--fg); border: 1px solid var(--line);
-    border-radius: 6px; padding: .5em; font-family: inherit; font-size: .92em;
-  }
-  .feedback-form textarea { min-height: 70px; resize: vertical; }
+  /* Feedback */
   .feedback-item {
     background: var(--bg); padding: .5em .8em; border-radius: 6px;
-    margin: .3em 0; border-left: 3px solid var(--muted);
-    font-size: .9em;
+    margin: .3em 0; border-left: 3px solid var(--muted); font-size: .9em;
   }
   .feedback-item.concern    { border-left-color: var(--orange); }
   .feedback-item.praise     { border-left-color: var(--green); }
   .feedback-item.suggestion { border-left-color: var(--accent); }
   .feedback-item .meta { font-size: .75em; color: var(--muted); margin-top: .25em; }
+
+  /* Privacy lists */
+  .privacy-yes { color: var(--green); }
+  .privacy-no  { color: var(--red); }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
+    background: var(--bg2); color: var(--fg);
+    padding: 0.7em 1.2em; border-radius: 8px;
+    border: 1px solid var(--line); box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    opacity: 0; pointer-events: none; transition: opacity 0.3s; z-index: 100;
+  }
+  .toast.show { opacity: 1; }
+
+  /* Diagnostics rows */
+  .check-row { display: flex; align-items: flex-start; gap: 0.6em; padding: 0.5em 0; border-bottom: 1px dotted var(--line); }
+  .check-row:last-child { border-bottom: none; }
+  .check-row .led { width: 12px; height: 12px; border-radius: 50%; margin-top: 0.35em; flex-shrink: 0; box-shadow: 0 0 8px currentColor; }
+  .check-row .led.ok  { background: var(--green); color: var(--green); }
+  .check-row .led.bad { background: var(--red);   color: var(--red); }
+  .check-row .body { flex: 1; }
+  .check-row .label { font-weight: 600; font-size: 0.9em; }
+  .check-row .detail { color: var(--muted); font-size: 0.82em; margin-top: 0.15em; }
+  .check-row .blocker { color: var(--yellow); font-size: 0.8em; margin-top: 0.25em; }
 </style>
 </head>
 <body>
@@ -308,119 +252,238 @@
 
 <main>
 
-  <!-- ============ INDIVIDUAL VIEW ============ -->
-  <section class="view active" data-view="individual">
+  <!-- ============ HOME ============ -->
+  <section class="view active" data-view="home">
     <div class="card">
-      <h2>Current zone density</h2>
+      <h2>Welcome</h2>
+      <p>
+        Echolocate uses WiFi signal patterns to monitor crowding in shared
+        spaces — <strong>without cameras, faces, or names</strong>. Pick the
+        mode that fits you:
+      </p>
+      <div class="row" style="margin-top:.6em">
+        <button id="go-consumer" class="big" style="background:var(--green)">I'm a Consumer</button>
+        <button id="go-business" class="big" style="background:var(--accent)">I'm a Business</button>
+      </div>
+      <p style="font-size:.85em;color:var(--muted);margin-top:.8em">
+        You can switch any time using the tabs at the bottom.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Right now in this space</h2>
       <div class="gauge">
-        <div id="ind-dot" class="dot level-calibrating"></div>
+        <div id="home-dot" class="dot level-calibrating"></div>
         <div>
-          <div id="ind-level" class="label">connecting…</div>
-          <div id="ind-sub" class="sub">Waiting for data from the sensor</div>
+          <div id="home-level" class="label">connecting…</div>
+          <div id="home-sub" class="sub">Waiting for sensor data</div>
         </div>
       </div>
     </div>
 
     <div class="card">
-      <h2>Stay informed</h2>
-      <p style="font-size:.92em;line-height:1.55;color:var(--muted)">
-        Get push notifications when this space is crowded — and anonymous alerts
-        if someone you shared the room with reports a positive test.
-        <strong>No identity data is ever collected.</strong>
+      <h2 class="privacy-yes">What IS collected</h2>
+      <ul style="line-height:1.65;font-size:.92em;padding-left:1.2em;margin:0">
+        <li>Aggregate occupancy levels (calm / busy / crowded)</li>
+        <li>Anonymous rotating tokens (15-min rotation, opt-in only)</li>
+        <li>Zone+time pairs you visited (only after you check in)</li>
+        <li>Spatial metadata from snapshot-triggered AI analysis</li>
+        <li>Anonymous community feedback you submit</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2 class="privacy-no">What is NEVER collected</h2>
+      <ul style="line-height:1.65;font-size:.92em;padding-left:1.2em;margin:0">
+        <li>Photos, video, or audio</li>
+        <li>Faces or biometric features</li>
+        <li>Names, email addresses, phone numbers</li>
+        <li>Device fingerprints, IP addresses, MAC addresses</li>
+        <li>Any history outside this space</li>
+      </ul>
+      <p style="color:var(--muted);font-size:.82em;margin-top:.7em;line-height:1.5">
+        Verifiable by code review: the SQLite schema literally has no column
+        for any of the above. <a href="https://github.com" style="color:var(--accent)">See backend/storage.py</a>.
       </p>
-      <div id="enroll-status" style="margin-bottom:.6em;"></div>
-      <button id="btn-enroll" class="primary">Enable notifications</button>
-      <button id="btn-report" class="danger" style="margin-left:.4em;display:none">I tested positive</button>
+    </div>
+
+    <div class="card">
+      <h2>Verify the device yourself</h2>
+      <p style="color:var(--muted);font-size:.9em;line-height:1.5">
+        The sensor exposes its own status page. Open it directly to confirm
+        the system is working with the data shown above:
+      </p>
+      <a id="verify-link" href="#" target="_blank" rel="noopener" class="primary"
+         style="display:inline-block;text-decoration:none">Open device /health →</a>
+    </div>
+  </section>
+
+  <!-- ============ CONSUMER ============ -->
+  <section class="view" data-view="consumer">
+
+    <div class="card">
+      <h2>Right now</h2>
+      <div class="gauge">
+        <div id="con-dot" class="dot level-calibrating"></div>
+        <div>
+          <div id="con-level" class="label">connecting…</div>
+          <div id="con-sub" class="sub">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Check in here</h2>
+      <p style="color:var(--muted);font-size:.9em;line-height:1.5">
+        Logging visits is what makes anonymous exposure alerts possible.
+        No name, no device fingerprint — just a rotating ID stored on this
+        phone. You can delete everything any time.
+      </p>
+      <label for="con-zone">Zone</label>
+      <input id="con-zone" type="text" value="main" placeholder="main / entrance / patio…" />
+      <label class="toggle" style="margin:.7em 0">
+        <input id="con-crowded" type="checkbox" />
+        <span>Felt crowded (helps the operator improve the space)</span>
+      </label>
+      <button id="btn-checkin" class="big">I'm here</button>
+      <div id="con-token-info" style="margin-top:.6em;font-size:.78em;color:var(--muted);word-break:break-all"></div>
+    </div>
+
+    <div class="card">
+      <h2>Notifications inbox</h2>
+      <p style="color:var(--muted);font-size:.85em;line-height:1.5;margin-top:0">
+        Exposure alerts and operator broadcasts. Push notifications also fire
+        when you've enabled them.
+      </p>
+      <div id="con-notifs"><em style="color:var(--muted)">No alerts yet.</em></div>
+      <div style="margin-top:.5em">
+        <button id="btn-enable-push" class="ghost">Enable push notifications</button>
+        <span id="push-status" style="font-size:.78em;color:var(--muted);margin-left:.4em"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>My visits</h2>
+      <div id="con-visits"><em style="color:var(--muted)">No visits yet.</em></div>
+    </div>
+
+    <div class="card" style="border-color:var(--red)">
+      <h2 style="color:var(--red)">I tested positive</h2>
+      <p style="color:var(--muted);font-size:.9em;line-height:1.5">
+        This will send anonymous exposure alerts to anyone whose visits
+        overlapped yours. <strong>You will not be identified to them</strong> —
+        the system itself doesn't know who you are.
+      </p>
+      <button id="btn-report-sick" class="danger">Report positive test</button>
     </div>
 
     <div class="card">
       <h2>Speak up — anonymously</h2>
-      <p style="font-size:.9em;color:var(--muted);line-height:1.5;margin-top:0">
-        Felt cramped? See something the operator should know? Send a note.
-        No identifiers attached, ever. Visible to operators and on the public Transparency page.
+      <p style="color:var(--muted);font-size:.88em;line-height:1.5;margin-top:0">
+        See something the operator should know? Send a note. No identifiers
+        attached, ever.
       </p>
-      <form id="feedback-form" class="feedback-form">
-        <select id="fb-sentiment">
+      <form id="feedback-form">
+        <select id="fb-sentiment" style="margin-bottom:.5em">
           <option value="concern">Concern</option>
           <option value="suggestion">Suggestion</option>
           <option value="praise">Praise</option>
         </select>
         <textarea id="fb-message" placeholder="What did you notice?" maxlength="1000" required></textarea>
-        <button type="submit" class="primary" style="align-self:flex-start">Submit anonymously</button>
+        <button type="submit" class="primary" style="margin-top:.5em">Submit anonymously</button>
       </form>
-    </div>
-
-    <div class="card">
-      <h2>What this means</h2>
-      <ul style="line-height:1.7;color:var(--muted);font-size:.92em;">
-        <li><strong style="color:var(--green)">Empty / Low:</strong> Safe to enter. Plenty of room.</li>
-        <li><strong style="color:var(--orange)">Moderate:</strong> Consider spacing out or returning later.</li>
-        <li><strong style="color:var(--red)">High:</strong> Crowded. We recommend deferring your visit.</li>
-      </ul>
     </div>
   </section>
 
-  <!-- ============ OPERATOR VIEW ============ -->
-  <section class="view" data-view="operator">
+  <!-- ============ BUSINESS ============ -->
+  <section class="view" data-view="business">
+
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6em">
-        <span style="font-size:.75em;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Display mode</span>
-        <label style="display:inline-flex;align-items:center;gap:.4em;font-size:.85em;cursor:pointer">
-          <input id="plain-toggle" type="checkbox" checked />
-          <span>Plain language</span>
-        </label>
-      </div>
+      <h2>Live occupancy</h2>
       <div class="gauge">
-        <div id="op-dot" class="dot level-calibrating"></div>
+        <div id="biz-dot" class="dot level-calibrating"></div>
         <div style="flex:1">
-          <div id="op-level" class="label">connecting…</div>
-          <div id="op-sub" class="sub">—</div>
+          <div id="biz-level" class="label">connecting…</div>
+          <div id="biz-sub" class="sub">—</div>
         </div>
       </div>
       <canvas id="spark" style="margin-top:1em"></canvas>
     </div>
 
-    <div class="card techy">
-      <h2>Stream health</h2>
-      <div id="health"></div>
-      <div style="margin-top:.8em;display:flex;gap:.4em;flex-wrap:wrap">
-        <button id="btn-recalibrate" class="ghost">Recalibrate baseline</button>
-        <span style="color:var(--muted);font-size:.78em;align-self:center">
-          Empty the room first, then click. Takes ~10s.
-        </span>
+    <div class="card">
+      <h2>Today's visits</h2>
+      <div class="stats">
+        <div class="stat"><div id="biz-visits-total" class="v">0</div><div class="k">Visits logged</div></div>
+        <div class="stat"><div id="biz-visits-unique" class="v">0</div><div class="k">Unique visitors</div></div>
+        <div class="stat"><div id="biz-self-crowded" class="v">0</div><div class="k">Felt-crowded reports</div></div>
+        <div class="stat"><div id="biz-self-sick" class="v">0</div><div class="k">Sick reports</div></div>
       </div>
     </div>
 
-    <div class="card techy">
-      <h2>System status</h2>
-      <div class="stats">
-        <div class="stat"><div id="st-obs" class="v">0</div><div class="k">Observations</div></div>
-        <div class="stat"><div id="st-var" class="v">0</div><div class="k">Variance</div></div>
-        <div class="stat"><div id="st-rat" class="v">0</div><div class="k">Variance ratio</div></div>
-        <div class="stat"><div id="st-cnt" class="v">0</div><div class="k">Estimated count</div></div>
-      </div>
+    <div class="card">
+      <h2>Notify visitors</h2>
+      <p style="color:var(--muted);font-size:.88em;line-height:1.5;margin-top:0">
+        Send an anonymous broadcast to everyone who visited a zone within a
+        time window. <strong>You don't see who they are</strong> — the
+        message is delivered to their inboxes and to push if they've
+        enabled it. Use cases: exposure alert, ventilation issue,
+        scheduled closure, follow-up survey.
+      </p>
+      <form id="broadcast-form">
+        <div class="row">
+          <div>
+            <label for="bc-zone">Zone</label>
+            <input id="bc-zone" type="text" value="main" required />
+          </div>
+          <div>
+            <label for="bc-type">Type</label>
+            <select id="bc-type">
+              <option value="general">General</option>
+              <option value="exposure">Exposure</option>
+              <option value="crowding">Crowding</option>
+            </select>
+          </div>
+        </div>
+        <div class="row" style="margin-top:.6em">
+          <div>
+            <label for="bc-from">From</label>
+            <input id="bc-from" type="datetime-local" required />
+          </div>
+          <div>
+            <label for="bc-to">To</label>
+            <input id="bc-to" type="datetime-local" required />
+          </div>
+        </div>
+        <div style="margin-top:.6em">
+          <label for="bc-title">Title</label>
+          <input id="bc-title" type="text" value="Echolocate alert" required />
+        </div>
+        <div style="margin-top:.6em">
+          <label for="bc-body">Message</label>
+          <textarea id="bc-body" required placeholder="Air filtration was offline for ~30 minutes during your visit. We're following up. No action needed."></textarea>
+        </div>
+        <button type="submit" class="primary" style="margin-top:.6em">Send broadcast</button>
+        <span id="bc-status" style="margin-left:.6em;color:var(--muted);font-size:.85em"></span>
+      </form>
     </div>
 
     <div class="card">
       <h2>AI suggestions waiting on you</h2>
       <p style="color:var(--muted);font-size:.88em;margin-top:0">
         Each card is a judgment the AI made. You decide whether to act on it.
-        Your decision is logged and visible on the public Transparency page.
+        Decisions are logged and visible on the public homepage.
       </p>
-      <div id="decisions"><em style="color:var(--muted)">No suggestions yet.</em></div>
+      <div id="decisions"><em style="color:var(--muted)">No suggestions yet — they appear when crowding triggers an analysis.</em></div>
+    </div>
+
+    <div class="card">
+      <h2>Community feedback</h2>
+      <div id="feedback-list"><em style="color:var(--muted)">No feedback yet.</em></div>
     </div>
 
     <div class="card">
       <h2>Recent observations</h2>
       <div id="observations"><em style="color:var(--muted)">No threshold events yet.</em></div>
-    </div>
-
-    <div class="card">
-      <h2>Community feedback</h2>
-      <p style="color:var(--muted);font-size:.88em;margin-top:0">
-        Anonymous reports submitted by people in the space. No identifiers.
-      </p>
-      <div id="feedback-list"><em style="color:var(--muted)">No feedback yet.</em></div>
     </div>
 
     <div class="card">
@@ -430,169 +493,37 @@
         No images are used; only structured observations.
       </p>
       <button id="btn-report-gen" class="primary">Generate report</button>
-      <pre id="report" class="report" style="display:none;margin-top:1em"></pre>
+      <pre id="report" class="report" style="display:none;margin-top:1em;white-space:pre-wrap;background:var(--bg);padding:1em;border-radius:8px;line-height:1.5"></pre>
     </div>
-  </section>
 
-  <!-- ============ CHAT ============ -->
-  <section class="view" data-view="chat">
-    <div class="card">
+    <div class="card collapsed" id="card-diag">
+      <span class="collapse-toggle" data-toggle="card-diag">Expand</span>
+      <h2>System diagnostics</h2>
+      <div id="diag-checks"><em style="color:var(--muted)">Loading…</em></div>
+      <div style="margin-top:.6em;display:flex;gap:.4em;flex-wrap:wrap">
+        <button id="btn-diag-refresh" class="ghost">Re-run checks</button>
+        <button id="btn-diag-firmware" class="ghost">Test device link</button>
+        <button id="btn-recalibrate" class="ghost">Recalibrate baseline</button>
+      </div>
+    </div>
+
+    <div class="card collapsed" id="card-chat">
+      <span class="collapse-toggle" data-toggle="card-chat">Expand</span>
       <h2>Ask Echolocate</h2>
       <div id="chat-log"></div>
-      <div class="chat-input">
-        <input id="chat-input" placeholder="Is it safe to come in now?" />
+      <div style="display:flex;gap:.5em;margin-top:.5em">
+        <input id="chat-input" placeholder="Is it busy now?" />
         <button id="btn-send" class="primary">Send</button>
       </div>
-    </div>
-  </section>
-
-  <!-- ============ PUBLIC TRANSPARENCY ============ -->
-  <section class="view" data-view="transparency">
-    <div class="card">
-      <h2>Public transparency</h2>
-      <p style="color:var(--muted);font-size:.9em;line-height:1.55;margin-top:0">
-        This page is the system's promise. Anyone with the URL can see
-        everything the system knows — no login, no enrollment.
-        Bookmark it; share it.
-      </p>
-    </div>
-
-    <div class="card">
-      <h2>Right now</h2>
-      <div id="tp-now" style="font-size:1.4em;font-weight:600;line-height:1.4">…</div>
-      <div id="tp-now-sub" style="color:var(--muted);font-size:.9em;margin-top:.3em">…</div>
-    </div>
-
-    <div class="card">
-      <h2 class="privacy-yes">What IS collected</h2>
-      <ul id="tp-yes" style="padding-left:1.2em;line-height:1.65;font-size:.92em"></ul>
-    </div>
-
-    <div class="card">
-      <h2 class="privacy-no">What is NEVER collected</h2>
-      <ul id="tp-no" style="padding-left:1.2em;line-height:1.65;font-size:.92em"></ul>
-      <p id="tp-proof" style="color:var(--muted);font-size:.85em;margin-bottom:0;line-height:1.5"></p>
-    </div>
-
-    <div class="card">
-      <h2>AI activity</h2>
-      <p style="color:var(--muted);font-size:.88em;margin-top:0">
-        Every judgment the AI made and what the operator decided about it.
-        No raw prompts or images are shown — those stay with the operator.
-      </p>
-      <div id="tp-decisions"><em style="color:var(--muted)">Loading…</em></div>
-    </div>
-
-    <div class="card">
-      <h2>Community feedback</h2>
-      <div id="tp-feedback"><em style="color:var(--muted)">Loading…</em></div>
-    </div>
-
-    <div class="card">
-      <h2>Verify the device yourself</h2>
-      <p style="color:var(--muted);font-size:.9em;line-height:1.55">
-        The sensor exposes its own status page. Open it directly to confirm
-        the system is working with the data shown above:
-      </p>
-      <a id="tp-verify" href="#" target="_blank" rel="noopener"
-         style="display:inline-block;padding:.6em 1em;background:var(--accent);color:white;border-radius:8px;text-decoration:none;font-weight:600">
-        Open device /health →
-      </a>
-    </div>
-  </section>
-
-  <!-- ============ DIAGNOSTICS ============ -->
-  <section class="view" data-view="diagnostics">
-    <div class="card">
-      <h2>System health</h2>
-      <p style="color:var(--muted);font-size:.92em;margin-top:0">
-        Each row tests one part of the pipeline. All green means the demo is ready to go.
-      </p>
-      <div id="diag-checks"><em style="color:var(--muted)">Loading…</em></div>
-      <div style="margin-top:.8em;display:flex;gap:.4em;flex-wrap:wrap">
-        <button id="btn-diag-refresh" class="primary">Re-run checks</button>
-        <button id="btn-diag-firmware" class="ghost">Test device link</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Active configuration</h2>
-      <div id="diag-config" class="health-row" style="display:block">
-        <em style="color:var(--muted)">Loading…</em>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Quick test recipes</h2>
-      <p style="color:var(--muted);font-size:.88em;line-height:1.55">
-        Verify the firmware over WiFi from any terminal:
-      </p>
-      <pre style="background:var(--bg);padding:.8em;border-radius:8px;font-size:.78em;overflow-x:auto">curl http://&lt;esp-ip&gt;/health
-curl http://&lt;esp-ip&gt;/stats
-curl http://&lt;esp-ip&gt;/csi/latest</pre>
-      <p style="color:var(--muted);font-size:.88em;line-height:1.55">
-        Or hit them through the backend (no need to know the IP):
-      </p>
-      <pre style="background:var(--bg);padding:.8em;border-radius:8px;font-size:.78em;overflow-x:auto">curl /api/firmware-status
-curl /api/diagnostics</pre>
-    </div>
-  </section>
-
-  <!-- ============ PRIVACY ============ -->
-  <section class="view" data-view="privacy">
-    <div class="card">
-      <h2>Privacy by architecture</h2>
-      <p style="line-height:1.55;font-size:.92em">
-        Echolocate is built so that surveillance is <em>physically impossible</em>,
-        not merely against policy. The schema below has nowhere to put an image,
-        and the camera shutter is closed by default.
-      </p>
-    </div>
-
-    <div class="privacy-grid">
-      <div class="card">
-        <h3 class="privacy-yes">What IS collected</h3>
-        <ul>
-          <li>Aggregate occupancy levels (empty / low / moderate / high)</li>
-          <li>Anonymous rotating tokens (changed every 15 min)</li>
-          <li>Zone + time pairs you visited (only if you opted in)</li>
-          <li>Spatial metadata extracted from threshold-triggered snapshots — counts and clusters near features</li>
-        </ul>
-      </div>
-      <div class="card">
-        <h3 class="privacy-no">What is NEVER collected</h3>
-        <ul>
-          <li>Photos, video, or audio</li>
-          <li>Faces or biometric features</li>
-          <li>Names, email, phone, account info</li>
-          <li>Browsing or location history outside this space</li>
-          <li>Identity information of any kind</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Image lifecycle</h2>
-      <pre style="margin:0;font-size:.85em;line-height:1.5;color:var(--muted)">
-   capture → ~2s in RAM → Claude Vision → discard
-      ↓                         ↓                  ↓
-  [no disk]              [structured JSON]   [memory cleared]
-                                ↓
-                       saved to SQLite store
-                       (no image columns exist)
-      </pre>
     </div>
   </section>
 
 </main>
 
 <nav class="tabs">
-  <button data-tab="individual" class="active">Me</button>
-  <button data-tab="operator">Operator</button>
-  <button data-tab="transparency">Public</button>
-  <button data-tab="chat">Chat</button>
-  <button data-tab="diagnostics">Diag</button>
-  <button data-tab="privacy">Privacy</button>
+  <button data-tab="home" class="active">Home</button>
+  <button data-tab="consumer">Consumer<span id="con-badge" class="badge-count"></span></button>
+  <button data-tab="business">Business</button>
 </nav>
 
 <div id="toast" class="toast"></div>
