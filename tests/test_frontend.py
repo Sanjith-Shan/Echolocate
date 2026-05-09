@@ -58,25 +58,51 @@ def test_app_root_serves_html(backend):
     assert "Echolocate" in r.text
 
 
-def test_app_includes_all_tabs(backend):
+def test_app_includes_three_primary_tabs(backend):
+    """The app collapses into three modes: Home, Consumer, Business."""
     r = httpx.get(f"http://127.0.0.1:{backend}/app/")
     html = r.text
-    for tab in ("individual", "operator", "transparency", "chat",
-                "diagnostics", "privacy"):
+    for tab in ("home", "consumer", "business"):
         assert f'data-tab="{tab}"' in html, f"tab '{tab}' missing"
+    # The old multi-tab shape should be gone from the nav
+    assert html.count('<nav class="tabs">') == 1
 
 
-def test_app_js_references_governance_endpoints(backend):
+def test_app_js_references_consumer_business_endpoints(backend):
     r = httpx.get(f"http://127.0.0.1:{backend}/app/app.js")
     js = r.text
-    for path in ("/api/decisions", "/api/community-feedback",
-                 "/api/transparency"):
+    for path in (
+        "/api/consumer/check-in",
+        "/api/consumer/notifications",
+        "/api/consumer/my-visits",
+        "/api/consumer/report-sick",
+        "/api/business/notify-visitors",
+        "/api/business/visits",
+        "/api/decisions",
+        "/api/community-feedback",
+        "/api/transparency",
+    ):
         assert path in js, f"app.js missing reference to {path}"
 
 
-def test_app_html_has_plain_language_toggle(backend):
+def test_app_html_has_consumer_and_business_forms(backend):
+    """Spot-check the key interactive elements that drive the contact-tracing
+    flow exist in the served HTML."""
     r = httpx.get(f"http://127.0.0.1:{backend}/app/")
-    assert 'id="plain-toggle"' in r.text
+    html = r.text
+    for el in (
+        'id="btn-checkin"',           # consumer: I'm here
+        'id="con-crowded"',           # consumer: felt crowded toggle
+        'id="btn-report-sick"',       # consumer: report positive
+        'id="con-notifs"',            # consumer: notifications inbox
+        'id="con-visits"',            # consumer: my visits
+        'id="broadcast-form"',        # business: notify visitors
+        'id="bc-from"',               # business: time window
+        'id="bc-to"',
+        'id="bc-body"',
+        'id="biz-visits-total"',      # business: stats
+    ):
+        assert el in html, f"missing element: {el}"
 
 
 def test_static_pwa_assets_load(backend):
