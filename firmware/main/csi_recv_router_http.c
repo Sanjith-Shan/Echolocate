@@ -56,6 +56,8 @@
 #include "lwip/sys.h"
 #include "lwip/sockets.h"
 #include "lwip/netdb.h"
+#include "lwip/inet.h"
+#include "ping/ping_sock.h"
 
 /* ---------- Configurable constants ---------- */
 
@@ -280,36 +282,77 @@ static void csi_init(void) {
            "channel,local_timestamp,sig_len,rx_state,len,first_word,data\n");
 }
 
-/* ---------- Ping task: keeps WiFi traffic flowing for steady CSI ---------- */
+/* ---------- ICMP ping: steady AP responses to drive CSI capture ----------
+ *
+ * Why ICMP (not UDP-to-discard-port): WiFi CSI is captured on RECEIVED
+ * packets. We need a reliable source of incoming traffic. iPhone hotspots
+ * typically drop UDP to closed ports without responding. ICMP echo is part
+ * of the AP's mandatory stack — every ping gets a reply. Pinging the
+ * gateway at 10 Hz produces ~10 CSI samples/sec, matching the simulator.
+ */
 
-static void ping_task(void *arg) {
-    /* Simple ping to gateway every 100ms via socket-level ICMP echo wouldn't
-     * work without raw sockets. Instead, do a UDP "ping" — send a small UDP
-     * packet to the gateway port 9 (discard). Most APs respond at L2 with an
-     * ACK that triggers CSI capture even if the UDP itself goes unanswered. */
+static uint32_t g_ping_replies = 0;
 
-    char dummy[8] = {0};
-    while (1) {
-        esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-        if (netif) {
-            esp_netif_ip_info_t ip_info;
-            if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK &&
-                ip_info.gw.addr != 0) {
+static void on_ping_success(esp_ping_handle_t hdl, void *args) {
+    g_ping_replies++;
+}
 
-                int s = socket(AF_INET, SOCK_DGRAM, 0);
-                if (s >= 0) {
-                    struct sockaddr_in dst = {0};
-                    dst.sin_family = AF_INET;
-                    dst.sin_port = htons(9);  /* discard port */
-                    dst.sin_addr.s_addr = ip_info.gw.addr;
-                    sendto(s, dummy, sizeof(dummy), 0,
-                           (struct sockaddr *)&dst, sizeof(dst));
-                    close(s);
-                }
-            }
-        }
-        vTaskDelay(pdMS_TO_TICKS(100));  /* 10 Hz */
+static void on_ping_timeout(esp_ping_handle_t hdl, void *args) {
+    /* Don't log every timeout — they're expected if AP is briefly busy. */
+}
+
+static void on_ping_end(esp_ping_handle_t hdl, void *args) {
+    /* Restart immediately for continuous traffic. */
+    esp_ping_start(hdl);
+}
+
+static esp_err_t start_gateway_ping(void) {
+    esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (!netif) return ESP_FAIL;
+
+    esp_netif_ip_info_t ip_info;
+    if (esp_netif_get_ip_info(netif, &ip_info) != ESP_OK || ip_info.gw.addr == 0) {
+        return ESP_FAIL;
     }
+
+    ip_addr_t target = {0};
+    target.type = IPADDR_TYPE_V4;
+    target.u_addr.ip4.addr = ip_info.gw.addr;
+
+    esp_ping_config_t cfg = ESP_PING_DEFAULT_CONFIG();
+    cfg.target_addr   = target;
+    cfg.count         = 0;       /* 0 = ping forever */
+    cfg.interval_ms   = 100;     /* 10 Hz — matches detector sample_rate */
+    cfg.timeout_ms    = 800;
+    cfg.data_size     = 32;
+    cfg.tos           = 0;
+    cfg.task_stack_size = 4096;
+    cfg.task_prio     = 4;
+
+    esp_ping_callbacks_t cbs = {
+        .on_ping_success = on_ping_success,
+        .on_ping_timeout = on_ping_timeout,
+        .on_ping_end     = on_ping_end,
+        .cb_args         = NULL,
+    };
+
+    esp_ping_handle_t hdl = NULL;
+    esp_err_t err = esp_ping_new_session(&cfg, &cbs, &hdl);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_ping_new_session failed: %d", err);
+        return err;
+    }
+
+    err = esp_ping_start(hdl);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_ping_start failed: %d", err);
+        return err;
+    }
+
+    char gw_str[16];
+    esp_ip4addr_ntoa(&ip_info.gw, gw_str, sizeof(gw_str));
+    ESP_LOGI(TAG, "ICMP ping → %s @ 10 Hz (drives CSI capture)", gw_str);
+    return ESP_OK;
 }
 
 /* ---------- HTTP handlers ---------- */
@@ -384,16 +427,17 @@ static esp_err_t health_get_handler(httpd_req_t *req) {
     snprintf(buf, sizeof(buf),
         "{"
         "\"ok\":true,"
-        "\"firmware\":\"echolocate-csi-1.0\","
+        "\"firmware\":\"echolocate-csi-1.1\","
         "\"chip\":\"esp32s3\","
         "\"ssid\":\"%s\","
         "\"ip\":\"%s\","
         "\"rssi\":%d,"
         "\"uptime_s\":%" PRId64 ","
         "\"free_heap\":%d,"
-        "\"packets_received\":%d"
+        "\"packets_received\":%d,"
+        "\"ping_replies\":%" PRIu32
         "}",
-        ssid, ip, rssi, uptime_s, free_heap, packets);
+        ssid, ip, rssi, uptime_s, free_heap, packets, g_ping_replies);
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
@@ -547,12 +591,16 @@ void app_main(void) {
     start_webserver();
     start_mdns();
 
-    xTaskCreate(ping_task, "ping_task", 4096, NULL, 4, NULL);
+    /* Generate steady traffic so CSI keeps flowing. ICMP ping to the AP at
+     * 10 Hz — much more reliable than UDP-to-discard for iPhone hotspots. */
+    if (start_gateway_ping() != ESP_OK) {
+        ESP_LOGW(TAG, "ping setup failed — CSI will only capture on beacons (slower)");
+    }
 
     /* Periodic boot-banner reminder so the user can find the IP from monitor */
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(30000));
-        ESP_LOGI(TAG, "alive  ip=%s  packets=%" PRIu32 "  rssi=%d",
-                 g_state.ip_str, g_state.packet_count, g_state.last_rssi);
+        ESP_LOGI(TAG, "alive  ip=%s  packets=%" PRIu32 "  rssi=%d  ping_replies=%" PRIu32,
+                 g_state.ip_str, g_state.packet_count, g_state.last_rssi, g_ping_replies);
     }
 }

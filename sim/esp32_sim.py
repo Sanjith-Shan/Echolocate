@@ -319,7 +319,7 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/health":
             self._json({
                 "ok": True,
-                "firmware": "echolocate-csi-sim-1.0",
+                "firmware": "echolocate-csi-sim-1.1",
                 "chip": "simulator",
                 "ssid": "<sim>",
                 "ip": "127.0.0.1",
@@ -327,6 +327,7 @@ class _Handler(BaseHTTPRequestHandler):
                 "uptime_s": uptime,
                 "free_heap": -1,
                 "packets_received": packets,
+                "ping_replies": packets,  # 1:1 with samples in sim — see firmware README
                 "simulated_level": level,
             })
         elif path == "/stats":

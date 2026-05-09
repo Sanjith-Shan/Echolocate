@@ -30,9 +30,14 @@ I (5273) echolocate: ===========================================
 | Endpoint        | Returns                                                              |
 |-----------------|----------------------------------------------------------------------|
 | `GET /`         | HTML status page (auto-refreshing)                                   |
-| `GET /health`   | `{ok, firmware, chip, ssid, ip, rssi, uptime_s, free_heap, packets}` |
+| `GET /health`   | `{ok, firmware, chip, ssid, ip, rssi, uptime_s, free_heap, packets, ping_replies}` |
 | `GET /stats`    | `{samples, subcarriers_per_sample, rolling_mean_amplitude, ...}`     |
 | `GET /csi/latest` | `{sample_us, rssi, n, amplitudes:[...]}`                           |
+
+`ping_replies` counts how many ICMP echo replies the gateway has answered.
+If this number is climbing, your AP is responsive and CSI is being driven
+reliably. If `packets_received` grows but `ping_replies` is stuck at 0,
+your AP is filtering ICMP — uncommon but possible on enterprise networks.
 
 mDNS advertises `echolocate.local` so you can also try `curl http://echolocate.local/health`.
 
@@ -93,6 +98,7 @@ the firmware is healthy. If it stays at zero, see *Troubleshooting* below.
 | No serial output at all          | Wrong baud rate                                 | Confirm 921600. Or run `idf.py monitor`.         |
 | `WiFi failed to connect within 30s` | Hotspot is 5 GHz only                       | Enable "Maximize Compatibility" on iPhone.       |
 | Connects but `packets_received=0` | CSI not enabled in sdkconfig                   | `idf.py menuconfig` → check `CONFIG_ESP_WIFI_CSI_ENABLED`. |
+| `packets_received` rising but `ping_replies=0` | AP filters ICMP                       | Try a different hotspot, or rely on beacon-driven CSI (slower). |
 | `packets_received` rising but variance always near zero | Empty room, baseline | Walk through the area; variance should jump.     |
 | HTTP server unreachable from laptop | Phone hotspot has client isolation on        | iPhone hotspots usually don't isolate; on Android, check.|
 
