@@ -228,6 +228,106 @@
   }
   .toast.show { opacity: 1; }
 
+  /* ---------- Structured AI report ---------- */
+  .rpt-section {
+    background: var(--bg); border-radius: 10px;
+    padding: 1em 1.1em; margin-top: .9em;
+    border-left: 3px solid var(--accent);
+  }
+  .rpt-section h3 {
+    margin: 0 0 .5em; font-size: .85em;
+    color: var(--muted); text-transform: uppercase; letter-spacing: .08em;
+    font-weight: 700;
+  }
+  .rpt-exec {
+    background: linear-gradient(135deg, rgba(14,165,233,0.12), rgba(167,139,250,0.08));
+    border-left-color: var(--accent2);
+    font-size: 1.05em; line-height: 1.5;
+  }
+  .rpt-exec p { margin: 0; }
+  .rpt-current { border-left-color: var(--green); }
+  .rpt-feature {
+    display: inline-block; background: var(--bg2); padding: .2em .65em;
+    border-radius: 999px; font-size: .82em; margin: .15em .25em .15em 0;
+    color: var(--fg); border: 1px solid var(--line);
+  }
+  .rpt-capacity {
+    background: rgba(34,197,94,0.10); border: 1px solid rgba(34,197,94,0.25);
+    padding: .55em .8em; border-radius: 8px; margin-top: .5em;
+    font-size: .9em; line-height: 1.5;
+  }
+  .rpt-capacity strong { color: var(--green); }
+  .rpt-block, .rpt-change {
+    background: var(--bg2); border-radius: 8px; padding: .7em .9em;
+    margin-top: .5em; border-left: 3px solid var(--muted);
+  }
+  .rpt-block.sev-high, .rpt-change.pri-high      { border-left-color: var(--red); }
+  .rpt-block.sev-medium, .rpt-change.pri-medium  { border-left-color: var(--orange); }
+  .rpt-block.sev-low, .rpt-change.pri-low        { border-left-color: var(--yellow); }
+  .rpt-tag {
+    font-size: .68em; padding: .12em .55em; border-radius: 999px;
+    text-transform: uppercase; letter-spacing: .08em; font-weight: 700;
+  }
+  .tag-high   { background: rgba(239,68,68,0.20); color: var(--red); }
+  .tag-medium { background: rgba(249,115,22,0.20); color: var(--orange); }
+  .tag-low    { background: rgba(234,179,8,0.20); color: var(--yellow); }
+  .tag-good   { background: rgba(34,197,94,0.20); color: var(--green); }
+  .tag-fair   { background: rgba(234,179,8,0.20); color: var(--yellow); }
+  .tag-poor   { background: rgba(239,68,68,0.20); color: var(--red); }
+  .rpt-where {
+    font-size: .82em; color: var(--muted); margin-top: .2em;
+  }
+  .rpt-line {
+    margin-top: .35em; font-size: .9em; line-height: 1.5;
+  }
+  .rpt-line .lbl {
+    display: inline-block; min-width: 5.5em;
+    color: var(--muted); font-size: .78em;
+    text-transform: uppercase; letter-spacing: .05em;
+  }
+  .rpt-cong {
+    display: flex; gap: .6em; padding: .55em .8em; margin-top: .4em;
+    background: var(--bg2); border-radius: 8px; align-items: center;
+    flex-wrap: wrap; font-size: .9em;
+  }
+  .rpt-temporal {
+    margin-top: .4em; padding: .5em .8em;
+    background: var(--bg2); border-radius: 8px; font-size: .9em;
+  }
+  .rpt-temporal strong { color: var(--accent); }
+  .rpt-caveat {
+    background: rgba(234,179,8,0.08); border: 1px solid rgba(234,179,8,0.25);
+    padding: .55em .8em; border-radius: 8px; font-size: .85em; line-height: 1.5;
+  }
+  .rpt-method {
+    color: var(--muted); font-size: .82em; line-height: 1.5;
+    padding: .55em 0;
+  }
+  .rpt-loading {
+    display: flex; align-items: center; gap: .6em;
+    padding: 1em; color: var(--muted);
+  }
+  .rpt-spinner {
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 2px solid var(--line); border-top-color: var(--accent);
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .rpt-stub-banner {
+    background: rgba(234,179,8,0.10); border: 1px solid rgba(234,179,8,0.30);
+    padding: .55em .8em; border-radius: 8px; margin-bottom: .8em;
+    font-size: .85em; color: var(--yellow); line-height: 1.5;
+  }
+
+  @media print {
+    nav.tabs, header .pill, .toggle, button, #card-diag, #card-chat,
+    .view:not(.active), .view.active > .card:not(#card-report) { display: none !important; }
+    body { padding-bottom: 0; background: white; color: black; }
+    .card, .rpt-section, .rpt-block, .rpt-change, .rpt-cong { background: white; border-color: #999; color: black; }
+    .rpt-section, .rpt-block, .rpt-change { box-shadow: 0 0 0 1px #ddd; }
+    h2, h3, .rpt-tag { color: black !important; }
+  }
+
   /* Diagnostics rows */
   .check-row { display: flex; align-items: flex-start; gap: 0.6em; padding: 0.5em 0; border-bottom: 1px dotted var(--line); }
   .check-row:last-child { border-bottom: none; }
@@ -486,14 +586,23 @@
       <div id="observations"><em style="color:var(--muted)">No threshold events yet.</em></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="card-report">
       <h2>Space Design Report</h2>
-      <p style="color:var(--muted);font-size:.92em">
-        Generate an AI-written report from accumulated spatial metadata.
-        No images are used; only structured observations.
+      <p style="color:var(--muted);font-size:.92em;margin-top:0">
+        AI reasons over every signal — sensor occupancy, visits, feedback,
+        prior decisions — and returns specific, dimensional changes you can
+        actually implement. No images are used.
       </p>
-      <button id="btn-report-gen" class="primary">Generate report</button>
-      <pre id="report" class="report" style="display:none;margin-top:1em;white-space:pre-wrap;background:var(--bg);padding:1em;border-radius:8px;line-height:1.5"></pre>
+      <div style="display:flex;gap:.5em;flex-wrap:wrap;align-items:center">
+        <button id="btn-report-gen" class="primary">Generate report</button>
+        <button id="btn-report-download" class="ghost" style="display:none">Download as Markdown</button>
+        <button id="btn-report-print" class="ghost" style="display:none">Print</button>
+        <span id="report-meta" style="font-size:.78em;color:var(--muted)"></span>
+      </div>
+      <div id="report-empty" style="margin-top:1em;font-size:.9em;color:var(--muted)">
+        No report yet — click Generate.
+      </div>
+      <div id="report-render" style="display:none;margin-top:1em"></div>
     </div>
 
     <div class="card collapsed" id="card-diag">

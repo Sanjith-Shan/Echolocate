@@ -555,16 +555,211 @@ $("#btn-recalibrate")?.addEventListener("click", async () => {
 
 // ---------- Business: report generation + chat ----------
 
+// ---------- Business: Structured Space Design Report ----------
+
+let _lastReport = null;
+
+function _tag(text, kind) {
+  if (!text) return "";
+  return `<span class="rpt-tag tag-${escapeHtml(kind || text).toLowerCase()}">${escapeHtml(text)}</span>`;
+}
+
+function renderReport(data) {
+  const empty = $("#report-empty");
+  const target = $("#report-render");
+  const meta = $("#report-meta");
+  if (!data || data.error) {
+    empty.style.display = "";
+    empty.textContent = (data && data.error) || "No report yet — click Generate.";
+    target.style.display = "none";
+    return;
+  }
+  empty.style.display = "none";
+  target.style.display = "";
+
+  _lastReport = data;
+  const s = data.report_structured || {};
+  const ctx = data.context || {};
+  meta.textContent = `Model: ${data.model || "?"} · ${ctx.observation_count || 0} observations · ${ctx.visit_count || 0} visits · ${ctx.feedback_count || 0} feedback · generated ${new Date().toLocaleString()}`;
+
+  $("#btn-report-download").style.display = "";
+  $("#btn-report-print").style.display    = "";
+
+  const stubBanner = s._stub
+    ? `<div class="rpt-stub-banner">⚠ Stub mode — no AI key set. Recommendations below are generic.
+       Drop OPENAI_API_KEY=… or ANTHROPIC_API_KEY=… in .env and regenerate.</div>`
+    : "";
+
+  let html = stubBanner;
+
+  // Executive summary
+  if (s.executive_summary) {
+    html += `<div class="rpt-section rpt-exec">
+      <h3>Executive summary</h3>
+      <p>${escapeHtml(s.executive_summary)}</p>
+    </div>`;
+  }
+
+  // Current state
+  if (s.current_state) {
+    html += `<div class="rpt-section rpt-current">
+      <h3>What's happening right now</h3>
+      <p style="margin:0;line-height:1.5">${escapeHtml(s.current_state)}</p>
+    </div>`;
+  }
+
+  // Spatial layout
+  const layout = s.spatial_layout || {};
+  const features = layout.inferred_features || [];
+  if (features.length || layout.estimated_safe_capacity) {
+    html += `<div class="rpt-section">
+      <h3>Inferred spatial layout</h3>
+      <div>${features.map(f => `<span class="rpt-feature">${escapeHtml(f)}</span>`).join("")}</div>
+      ${layout.estimated_safe_capacity ? `
+        <div class="rpt-capacity">
+          <strong>Safe capacity:</strong> ${escapeHtml(layout.estimated_safe_capacity)}
+        </div>` : ""}
+    </div>`;
+  }
+
+  // Blockers
+  const blockers = s.blockers || [];
+  if (blockers.length) {
+    html += `<div class="rpt-section">
+      <h3>Blockers (ranked)</h3>
+      ${blockers.map(b => `
+        <div class="rpt-block sev-${escapeHtml((b.severity || "").toLowerCase())}">
+          <div style="display:flex;gap:.5em;align-items:center;flex-wrap:wrap">
+            ${_tag(b.severity, b.severity)}
+            <strong>${escapeHtml(b.location || "—")}</strong>
+          </div>
+          <div class="rpt-line">${escapeHtml(b.description || "")}</div>
+          ${b.evidence ? `<div class="rpt-line"><span class="lbl">Evidence</span> ${escapeHtml(b.evidence)}</div>` : ""}
+        </div>`).join("")}
+    </div>`;
+  }
+
+  // High-congestion areas
+  const congestion = s.high_congestion_areas || [];
+  if (congestion.length) {
+    html += `<div class="rpt-section">
+      <h3>High-congestion areas</h3>
+      ${congestion.map(h => `
+        <div class="rpt-cong">
+          ${_tag(h.estimated_density || "?", h.estimated_density === "tight" ? "high" : (h.estimated_density === "moderate" ? "medium" : "low"))}
+          <div style="flex:1">
+            <strong>${escapeHtml(h.location || "?")}</strong>
+            <div style="color:var(--muted);font-size:.85em;margin-top:.15em">
+              ${escapeHtml(h.frequency || "")}${h.peak_times ? " · peaks " + escapeHtml(h.peak_times) : ""}
+            </div>
+          </div>
+        </div>`).join("")}
+    </div>`;
+  }
+
+  // Social distancing
+  const sd = s.social_distancing || {};
+  if (sd.current_compliance || (sd.recommendations && sd.recommendations.length)) {
+    html += `<div class="rpt-section">
+      <h3>Social distancing</h3>
+      <div style="display:flex;align-items:center;gap:.5em;flex-wrap:wrap">
+        <span class="lbl">Compliance:</span>
+        ${_tag(sd.current_compliance, sd.current_compliance)}
+      </div>
+      ${sd.rationale ? `<div class="rpt-line">${escapeHtml(sd.rationale)}</div>` : ""}
+      ${(sd.recommendations || []).map(r => `
+        <div class="rpt-block" style="margin-top:.6em">
+          <strong>${escapeHtml(r.action || "")}</strong>
+          ${r.rationale       ? `<div class="rpt-line"><span class="lbl">Why</span> ${escapeHtml(r.rationale)}</div>` : ""}
+          ${r.expected_impact ? `<div class="rpt-line"><span class="lbl">Impact</span> ${escapeHtml(r.expected_impact)}</div>` : ""}
+        </div>`).join("")}
+    </div>`;
+  }
+
+  // Specific changes (the headline output)
+  const changes = s.changes || [];
+  if (changes.length) {
+    html += `<div class="rpt-section">
+      <h3>Specific changes (do these)</h3>
+      ${changes.map(c => `
+        <div class="rpt-change pri-${escapeHtml((c.priority || "").toLowerCase())}">
+          <div style="display:flex;gap:.5em;align-items:center;flex-wrap:wrap">
+            ${_tag(c.priority, c.priority)}
+            <strong>${escapeHtml(c.action || "")}</strong>
+            ${c.dimensions ? `<span class="rpt-tag" style="background:var(--bg);color:var(--accent)">${escapeHtml(c.dimensions)}</span>` : ""}
+          </div>
+          ${c.location        ? `<div class="rpt-where">at ${escapeHtml(c.location)}</div>` : ""}
+          ${c.rationale       ? `<div class="rpt-line"><span class="lbl">Why</span> ${escapeHtml(c.rationale)}</div>` : ""}
+          ${c.expected_impact ? `<div class="rpt-line"><span class="lbl">Impact</span> ${escapeHtml(c.expected_impact)}</div>` : ""}
+        </div>`).join("")}
+    </div>`;
+  }
+
+  // Temporal patterns
+  const temporal = s.temporal_patterns || [];
+  if (temporal.length) {
+    html += `<div class="rpt-section">
+      <h3>Temporal patterns</h3>
+      ${temporal.map(t => `
+        <div class="rpt-temporal">
+          <strong>${escapeHtml(t.timeframe || "?")}</strong> — ${escapeHtml(t.observation || "")}
+        </div>`).join("")}
+    </div>`;
+  }
+
+  // Caveats + methodology
+  if (s.data_quality_caveats) {
+    html += `<div class="rpt-section">
+      <h3>Data quality caveats</h3>
+      <div class="rpt-caveat">${escapeHtml(s.data_quality_caveats)}</div>
+    </div>`;
+  }
+  if (s.methodology_note) {
+    html += `<div class="rpt-section">
+      <h3>Methodology</h3>
+      <div class="rpt-method">${escapeHtml(s.methodology_note)}</div>
+    </div>`;
+  }
+
+  target.innerHTML = html;
+}
+
 $("#btn-report-gen")?.addEventListener("click", async () => {
   const btn = $("#btn-report-gen");
-  btn.disabled = true; btn.textContent = "Generating…";
+  btn.disabled = true;
+  $("#report-empty").innerHTML =
+    `<div class="rpt-loading"><div class="rpt-spinner"></div> Generating report — the AI is reasoning over every signal…</div>`;
+  $("#report-empty").style.display = "";
+  $("#report-render").style.display = "none";
   try {
     const r = await fetch(`${API_BASE}/api/generate-report`, { method: "POST" });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      renderReport({ error: err.error || `HTTP ${r.status}` });
+      return;
+    }
     const d = await r.json();
-    $("#report").textContent = d.report || d.error || "(no output)";
-    $("#report").style.display = "";
-  } finally { btn.disabled = false; btn.textContent = "Generate report"; }
+    renderReport(d);
+  } catch (e) {
+    renderReport({ error: e.message });
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Regenerate";
+  }
 });
+
+$("#btn-report-download")?.addEventListener("click", () => {
+  if (!_lastReport) return;
+  const blob = new Blob([_lastReport.report_markdown || ""], { type: "text/markdown" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `space-design-report-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+$("#btn-report-print")?.addEventListener("click", () => window.print());
 
 const chatLog = $("#chat-log");
 function appendChat(role, text) {
