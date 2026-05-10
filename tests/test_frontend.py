@@ -38,6 +38,7 @@ def backend(tmp_path):
     # blanking any AI keys the parent shell or .env may have set.
     env["ANTHROPIC_API_KEY"] = ""
     env["OPENAI_API_KEY"] = ""
+    env["ECHOLOCATE_AUTOSEED"] = "0"
     # Point at a non-existent serial source — backend still serves the frontend.
     env["SERIAL_PORT"] = "tcp://127.0.0.1:1"
     env["ECHOLOCATE_DB"] = str(tmp_path / "fe.db")

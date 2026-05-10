@@ -65,6 +65,7 @@ def sim_and_backend(tmp_path):
     # blanking any AI keys the parent shell or .env may have set.
     env["ANTHROPIC_API_KEY"] = ""
     env["OPENAI_API_KEY"] = ""
+    env["ECHOLOCATE_AUTOSEED"] = "0"
     env["SERIAL_PORT"] = f"tcp://127.0.0.1:{sim_tcp}"
     env["ECHOLOCATE_DB"] = str(db)
     env["SNAPSHOT_COOLDOWN"] = "5"

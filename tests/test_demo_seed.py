@@ -43,6 +43,7 @@ def stack(tmp_path):
     env = os.environ.copy()
     env["ANTHROPIC_API_KEY"] = ""
     env["OPENAI_API_KEY"] = ""
+    env["ECHOLOCATE_AUTOSEED"] = "0"
     env["SERIAL_PORT"]       = f"tcp://127.0.0.1:{sim_tcp}"
     env["FIRMWARE_HTTP_URL"] = f"http://127.0.0.1:{sim_http}"
     env["ECHOLOCATE_DB"]     = str(db)

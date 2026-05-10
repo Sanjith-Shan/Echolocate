@@ -825,51 +825,26 @@ $("#btn-report-download")?.addEventListener("click", () => {
 
 $("#btn-report-print")?.addEventListener("click", () => window.print());
 
-// ---------- Demo controls ----------
-
-$("#btn-demo-seed")?.addEventListener("click", async () => {
-  const btn = $("#btn-demo-seed");
-  btn.disabled = true;
-  $("#demo-status").textContent = "Seeding…";
+// ---------- Auto-adopt the demo anchor token (so Consumer tab is warm) ----------
+// The backend auto-seeds on startup when the DB is empty and exposes the
+// anchor token here. If this browser hasn't registered yet, we adopt it
+// silently so notifications/visits show up immediately. Once the user
+// takes any action they get their own real token.
+async function maybeAdoptAnchorToken() {
+  if (localStorage.getItem(TOKEN_KEY)) return;
   try {
-    const r = await fetch(`${API_BASE}/api/_demo/seed`, { method: "POST" });
+    const r = await fetch(`${API_BASE}/api/_demo/anchor-token`);
+    if (!r.ok) return;
     const d = await r.json();
-    if (d.status === "ok") {
-      const s = d.summary;
-      $("#demo-status").innerHTML =
-        `<span style="color:var(--green)">✓ Seeded ${s.tokens_registered} visitors, ` +
-        `${s.visits} visits, ${s.community_feedback} feedback, ${s.spatial_observations} observations, ` +
-        `${s.ai_decisions} AI decisions, ${s.notifications} notifications.</span>`;
-      // Adopt the anchor token as our demo phone so the Consumer tab is populated too
-      if (d.demo_token_anchor_a) {
-        localStorage.setItem(TOKEN_KEY, d.demo_token_anchor_a);
-        showTokenInfo();
-      }
-      // Refresh every panel
-      loadDecisions(); loadFeedbackOperator(); loadVisitStats();
-      loadObservations(); loadNotifications(); loadVisits(); loadTransparency();
-      toast("Demo data loaded — every tab is populated.", 3500);
-    } else {
-      $("#demo-status").innerHTML = `<span style="color:var(--red)">Failed</span>`;
+    if (d.token_id) {
+      localStorage.setItem(TOKEN_KEY, d.token_id);
+      showTokenInfo();
+      loadNotifications();
+      loadVisits();
     }
-  } finally { btn.disabled = false; }
-});
-
-$("#btn-demo-reset")?.addEventListener("click", async () => {
-  if (!confirm("Wipe all demo data (visits, feedback, decisions, notifications)? This cannot be undone.")) return;
-  const btn = $("#btn-demo-reset");
-  btn.disabled = true;
-  $("#demo-status").textContent = "Resetting…";
-  try {
-    await fetch(`${API_BASE}/api/_demo/reset`, { method: "POST" });
-    localStorage.removeItem(TOKEN_KEY);
-    showTokenInfo();
-    loadDecisions(); loadFeedbackOperator(); loadVisitStats();
-    loadObservations(); loadNotifications(); loadVisits(); loadTransparency();
-    $("#demo-status").innerHTML = `<span style="color:var(--muted)">All wiped.</span>`;
-    toast("All demo data reset.");
-  } finally { btn.disabled = false; }
-});
+  } catch (_) {}
+}
+maybeAdoptAnchorToken();
 
 const chatLog = $("#chat-log");
 function appendChat(role, text) {

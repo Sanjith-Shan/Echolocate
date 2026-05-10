@@ -90,6 +90,14 @@ last_snapshot_time = 0.0
 serial_lines_seen = 0
 serial_lines_parsed = 0
 
+# Set when the auto-seeder runs on startup (or via /api/_demo/seed). Lets the
+# PWA fetch the demo phone's token without manual entry.
+demo_anchor_token: Optional[str] = None
+
+# Override with ECHOLOCATE_AUTOSEED=0 if you specifically want a fresh empty
+# system (e.g. for a manual hardware-only demo).
+AUTOSEED = os.getenv("ECHOLOCATE_AUTOSEED", "1") == "1"
+
 
 # ---------- Background workers ----------
 
@@ -230,7 +238,7 @@ monitor_task: Optional[asyncio.Task] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global serial_thread, monitor_task
+    global serial_thread, monitor_task, demo_anchor_token
     # Warm the in-memory observation list from anything previously persisted
     # (esp. demo-seeded data). Order matches insertion (oldest first).
     try:
@@ -240,6 +248,21 @@ async def lifespan(app: FastAPI):
             print(f"[backend] warmed {len(prior)} prior observations from DB")
     except Exception as e:
         print(f"[backend] couldn't warm observations: {e}")
+
+    # Auto-seed the demo story so the PWA is pre-populated. We RESET +
+    # RESEED on every startup so each demo session begins from the same
+    # known-good state. Set ECHOLOCATE_AUTOSEED=0 to opt out (e.g. for
+    # the actual hardware demo or for production use).
+    if AUTOSEED:
+        try:
+            demo_seed.reset_all(store, tokens, spatial_observations)
+            summary = demo_seed.seed(store, tokens, spatial_observations)
+            demo_anchor_token = summary["demo_token_anchor_a"]
+            print(f"[backend] auto-seeded demo data "
+                  f"({summary['visits']} visits, {summary['ai_decisions']} decisions, "
+                  f"anchor={demo_anchor_token[:8]}…)")
+        except Exception as e:
+            print(f"[backend] auto-seed skipped: {e}")
 
     serial_thread = threading.Thread(
         target=serial_reader_thread, args=(stop_event,), daemon=True
@@ -877,18 +900,29 @@ async def diagnostics():
 async def demo_seed_endpoint(reset: bool = True):
     """Populate a coherent bakery-at-lunch story for demos. If reset=true
     (default), wipes existing data first so the result is reproducible."""
+    global demo_anchor_token
     if reset:
         demo_seed.reset_all(store, tokens, spatial_observations)
     summary = demo_seed.seed(store, tokens, spatial_observations)
+    demo_anchor_token = summary["demo_token_anchor_a"]
     return {"status": "ok", "summary": {
         k: v for k, v in summary.items() if k != "personas"
-    }, "demo_token_anchor_a": summary["demo_token_anchor_a"]}
+    }, "demo_token_anchor_a": demo_anchor_token}
 
 
 @app.post("/api/_demo/reset")
 async def demo_reset_endpoint():
+    global demo_anchor_token
     demo_seed.reset_all(store, tokens, spatial_observations)
+    demo_anchor_token = None
     return {"status": "ok"}
+
+
+@app.get("/api/_demo/anchor-token")
+async def demo_anchor_token_endpoint():
+    """Returns the seeded demo phone's token, so the PWA can adopt it on
+    first load. Returns null when AUTOSEED is off or no seed has run."""
+    return {"token_id": demo_anchor_token}
 
 
 @app.get("/api/vapid-public-key")
