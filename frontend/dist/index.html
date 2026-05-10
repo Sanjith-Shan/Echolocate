@@ -9,13 +9,14 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
   :root {
-    --bg: #0f172a;
-    --bg2: #1e293b;
-    --fg: #e2e8f0;
-    --muted: #94a3b8;
-    --line: #334155;
-    --accent: #0ea5e9;
-    --accent2: #38bdf8;
+    --bg: #000000;        /* pure black canvas */
+    --bg2: #0e0e0e;       /* near-black for cards — just enough contrast to read */
+    --bg3: #181818;       /* a step lighter for inputs / nested wells */
+    --fg: #f5f5f5;        /* off-white body text */
+    --muted: #8a8a8a;     /* subdued gray for secondary text */
+    --line: #1f1f1f;      /* hairline borders */
+    --accent: #0ea5e9;    /* cyan — primary brand */
+    --accent2: #38bdf8;   /* lighter cyan for highlights */
     --green: #22c55e;
     --yellow: #eab308;
     --orange: #f97316;
@@ -120,7 +121,7 @@
 
   /* Forms */
   input[type=text], input[type=datetime-local], textarea, select {
-    background: var(--bg); color: var(--fg);
+    background: var(--bg3); color: var(--fg);
     border: 1px solid var(--line); border-radius: 6px;
     padding: 0.55em 0.7em; font-family: inherit; font-size: 0.94em; width: 100%;
   }
@@ -134,15 +135,15 @@
 
   /* Stats grid */
   .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6em; }
-  .stat { background: var(--bg); border-radius: 8px; padding: 0.6em 0.8em; }
+  .stat { background: var(--bg3); border-radius: 8px; padding: 0.6em 0.8em; }
   .stat .v { font-size: 1.5em; font-weight: 700; }
   .stat .k { font-size: 0.72em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 
-  #spark { width: 100%; height: 80px; background: var(--bg); border-radius: 8px; }
+  #spark { width: 100%; height: 80px; background: var(--bg3); border-radius: 8px; }
 
   /* Notification cards (consumer) */
   .notif {
-    background: var(--bg); border-left: 3px solid var(--accent);
+    background: var(--bg3); border-left: 3px solid var(--accent);
     padding: 0.7em 0.9em; margin: 0.5em 0; border-radius: 0 8px 8px 0;
     position: relative;
   }
@@ -173,7 +174,7 @@
 
   /* Decision cards (business) */
   .decision {
-    background: var(--bg); border-left: 3px solid var(--accent);
+    background: var(--bg3); border-left: 3px solid var(--accent);
     padding: .7em .9em; margin: .5em 0; border-radius: 0 8px 8px 0;
   }
   .decision .row1 {
@@ -206,7 +207,7 @@
 
   /* Feedback */
   .feedback-item {
-    background: var(--bg); padding: .5em .8em; border-radius: 6px;
+    background: var(--bg3); padding: .5em .8em; border-radius: 6px;
     margin: .3em 0; border-left: 3px solid var(--muted); font-size: .9em;
   }
   .feedback-item.concern    { border-left-color: var(--orange); }
@@ -230,7 +231,7 @@
 
   /* ---------- Structured AI report ---------- */
   .rpt-section {
-    background: var(--bg); border-radius: 10px;
+    background: var(--bg3); border-radius: 10px;
     padding: 1em 1.1em; margin-top: .9em;
     border-left: 3px solid var(--accent);
   }
