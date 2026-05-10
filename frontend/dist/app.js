@@ -41,6 +41,7 @@ function switchTab(tab) {
   if (tab === "consumer") { loadNotifications(); loadVisits(); }
   if (tab === "business") {
     loadDecisions(); loadFeedbackOperator(); loadVisitStats(); loadDiagnostics();
+    loadObservations();
   }
   if (tab === "home") loadTransparency();
 }
@@ -187,24 +188,44 @@ async function pollStatus() {
 setInterval(pollStatus, 5000);
 pollStatus();
 
+function _obsCardHtml(o) {
+  const ts = o.timestamp ? new Date(o.timestamp).toLocaleTimeString() : "—";
+  const issue = o.spatial_issue || (o._no_camera ? "Threshold breach (camera off)" : "—");
+  const choke = (o.chokepoints || []).join(", ") || "none";
+  const total_p = o.total_people_visible ?? "?";
+  const density = o.overall_density || "?";
+  return `<div class="decision">
+    <div class="row1">${ts}</div>
+    <div class="summary">${escapeHtml(issue)}</div>
+    <div style="color:var(--muted);font-size:.85em">
+      ~${total_p} people · ${escapeHtml(density)} density · chokepoints: ${escapeHtml(choke)}
+    </div>
+  </div>`;
+}
+
 function renderObservation(latest) {
   if (!latest) return;
   const el = $("#observations"); if (!el) return;
   if (el.querySelector("em")) el.innerHTML = "";
   const div = document.createElement("div");
-  div.className = "decision";
-  const ts = latest.timestamp ? new Date(latest.timestamp).toLocaleTimeString() : "—";
-  const issue = latest.spatial_issue || (latest._no_camera ? "Threshold breach (camera off)" : "—");
-  const choke = (latest.chokepoints || []).join(", ") || "none";
-  const total_p = latest.total_people_visible ?? "?";
-  const density = latest.overall_density || "?";
-  div.innerHTML = `<div class="row1">${ts}</div>
-    <div class="summary">${escapeHtml(issue)}</div>
-    <div style="color:var(--muted);font-size:.85em">
-      ~${total_p} people · ${escapeHtml(density)} density · chokepoints: ${escapeHtml(choke)}
-    </div>`;
-  el.prepend(div);
-  while (el.children.length > 8) el.removeChild(el.lastChild);
+  div.innerHTML = _obsCardHtml(latest);
+  el.prepend(div.firstElementChild);
+  // Keep only the 5 most recent so the card doesn't sprawl
+  while (el.children.length > 5) el.removeChild(el.lastChild);
+}
+
+async function loadObservations() {
+  const el = $("#observations"); if (!el) return;
+  try {
+    const r = await fetch(`${API_BASE}/api/observations?limit=5`);
+    const { observations } = await r.json();
+    if (!observations || observations.length === 0) {
+      el.innerHTML = `<em style="color:var(--muted)">No threshold events yet.</em>`;
+      return;
+    }
+    // Render newest first
+    el.innerHTML = observations.slice(-5).reverse().map(_obsCardHtml).join("");
+  } catch (_) {}
 }
 
 // ---------- Home: transparency / verify-yourself link ----------
@@ -444,38 +465,75 @@ const STATUS_LABEL = {
   accepted: "Accepted", rejected: "Rejected",
 };
 
+const DECISIONS_VISIBLE_DEFAULT = 5;
+let _decisionsExpanded = false;
+
+function _renderDecisionCard(d) {
+  const status = d.operator_status || "pending";
+  const ts = new Date(d.created_at).toLocaleString();
+  const notes = d.operator_notes
+    ? `<div class="notes-display">📝 ${escapeHtml(d.operator_notes)}</div>` : "";
+  return `
+    <div class="decision" data-id="${d.id}">
+      <div class="row1">
+        <span class="badge badge-${status}">${STATUS_LABEL[status] || status}</span>
+        <span>${escapeHtml(d.decision_type)}</span>
+        <span>·</span><span>${ts}</span>
+        <span>·</span><span>${escapeHtml(d.model || "?")}</span>
+      </div>
+      <div class="summary">${escapeHtml(d.summary || "(no summary)")}</div>
+      ${notes}
+      ${status === "pending" ? `
+        <div class="actions">
+          <button data-status="considered">Considered</button>
+          <button data-status="accepted">Accept</button>
+          <button data-status="rejected">Reject</button>
+        </div>
+        <input class="notes-input" placeholder="Add a note (optional, saved on click)" />
+      ` : ""}
+    </div>`;
+}
+
 async function loadDecisions() {
   try {
     const r = await fetch(`${API_BASE}/api/decisions`);
     const data = await r.json();
     const target = $("#decisions"); if (!target) return;
-    const decisions = data.decisions || [];
-    if (decisions.length === 0) {
-      target.innerHTML = `<em style="color:var(--muted)">No suggestions yet.</em>`;
+    const all = data.decisions || [];
+
+    if (all.length === 0) {
+      target.innerHTML = `<em style="color:var(--muted)">No suggestions yet — they appear when crowding triggers an analysis.</em>`;
       return;
     }
-    target.innerHTML = decisions.map(d => {
-      const status = d.operator_status || "pending";
-      const ts = new Date(d.created_at).toLocaleString();
-      const notes = d.operator_notes ? `<div class="notes-display">📝 ${escapeHtml(d.operator_notes)}</div>` : "";
-      return `
-        <div class="decision" data-id="${d.id}">
-          <div class="row1">
-            <span class="badge badge-${status}">${STATUS_LABEL[status] || status}</span>
-            <span>${escapeHtml(d.decision_type)}</span>
-            <span>·</span><span>${ts}</span>
-            <span>·</span><span>${escapeHtml(d.model || "?")}</span>
-          </div>
-          <div class="summary">${escapeHtml(d.summary || "(no summary)")}</div>
-          ${notes}
-          <div class="actions">
-            <button data-status="considered">Considered</button>
-            <button data-status="accepted">Accept</button>
-            <button data-status="rejected">Reject</button>
-          </div>
-          <input class="notes-input" placeholder="Add a note (optional, saved on click)" />
-        </div>`;
-    }).join("");
+
+    // Pending first (these need action), then most-recently decided.
+    const pending = all.filter(d => (d.operator_status || "pending") === "pending");
+    const decided = all.filter(d => (d.operator_status || "pending") !== "pending");
+    const ordered = [...pending, ...decided];
+
+    const visible = _decisionsExpanded ? ordered : ordered.slice(0, DECISIONS_VISIBLE_DEFAULT);
+    const hidden = ordered.length - visible.length;
+    const stats = data.stats || {};
+    const pendingCount = (stats.by_status || {}).pending || pending.length;
+    const acceptedCount = (stats.by_status || {}).accepted || 0;
+
+    const headerLine = `
+      <div style="display:flex;gap:.6em;flex-wrap:wrap;align-items:center;margin-bottom:.5em;font-size:.82em;color:var(--muted)">
+        ${pendingCount  ? `<span class="badge badge-pending">${pendingCount} pending</span>` : ""}
+        ${acceptedCount ? `<span class="badge badge-accepted">${acceptedCount} accepted</span>` : ""}
+        <span>· ${ordered.length} total</span>
+      </div>`;
+
+    const expandBtn = hidden > 0 || _decisionsExpanded
+      ? `<div style="margin-top:.6em;text-align:center">
+           <button id="btn-decisions-toggle" class="ghost" style="font-size:.85em">
+             ${_decisionsExpanded ? "Show fewer" : `Show ${hidden} more`}
+           </button>
+         </div>` : "";
+
+    target.innerHTML = headerLine + visible.map(_renderDecisionCard).join("") + expandBtn;
+
+    // Wire status buttons (only present on pending cards)
     target.querySelectorAll(".decision").forEach(card => {
       const id = card.dataset.id;
       const noteInput = card.querySelector(".notes-input");
@@ -484,11 +542,17 @@ async function loadDecisions() {
           const status = btn.dataset.status;
           const r2 = await fetch(`${API_BASE}/api/decisions/${id}`, {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status, notes: noteInput.value || null }),
+            body: JSON.stringify({ status, notes: noteInput?.value || null }),
           });
           if (r2.ok) { toast(`Marked ${STATUS_LABEL[status]}`); loadDecisions(); }
         });
       });
+    });
+
+    const tog = $("#btn-decisions-toggle");
+    if (tog) tog.addEventListener("click", () => {
+      _decisionsExpanded = !_decisionsExpanded;
+      loadDecisions();
     });
   } catch (_) {}
 }
@@ -761,6 +825,52 @@ $("#btn-report-download")?.addEventListener("click", () => {
 
 $("#btn-report-print")?.addEventListener("click", () => window.print());
 
+// ---------- Demo controls ----------
+
+$("#btn-demo-seed")?.addEventListener("click", async () => {
+  const btn = $("#btn-demo-seed");
+  btn.disabled = true;
+  $("#demo-status").textContent = "Seeding…";
+  try {
+    const r = await fetch(`${API_BASE}/api/_demo/seed`, { method: "POST" });
+    const d = await r.json();
+    if (d.status === "ok") {
+      const s = d.summary;
+      $("#demo-status").innerHTML =
+        `<span style="color:var(--green)">✓ Seeded ${s.tokens_registered} visitors, ` +
+        `${s.visits} visits, ${s.community_feedback} feedback, ${s.spatial_observations} observations, ` +
+        `${s.ai_decisions} AI decisions, ${s.notifications} notifications.</span>`;
+      // Adopt the anchor token as our demo phone so the Consumer tab is populated too
+      if (d.demo_token_anchor_a) {
+        localStorage.setItem(TOKEN_KEY, d.demo_token_anchor_a);
+        showTokenInfo();
+      }
+      // Refresh every panel
+      loadDecisions(); loadFeedbackOperator(); loadVisitStats();
+      loadObservations(); loadNotifications(); loadVisits(); loadTransparency();
+      toast("Demo data loaded — every tab is populated.", 3500);
+    } else {
+      $("#demo-status").innerHTML = `<span style="color:var(--red)">Failed</span>`;
+    }
+  } finally { btn.disabled = false; }
+});
+
+$("#btn-demo-reset")?.addEventListener("click", async () => {
+  if (!confirm("Wipe all demo data (visits, feedback, decisions, notifications)? This cannot be undone.")) return;
+  const btn = $("#btn-demo-reset");
+  btn.disabled = true;
+  $("#demo-status").textContent = "Resetting…";
+  try {
+    await fetch(`${API_BASE}/api/_demo/reset`, { method: "POST" });
+    localStorage.removeItem(TOKEN_KEY);
+    showTokenInfo();
+    loadDecisions(); loadFeedbackOperator(); loadVisitStats();
+    loadObservations(); loadNotifications(); loadVisits(); loadTransparency();
+    $("#demo-status").innerHTML = `<span style="color:var(--muted)">All wiped.</span>`;
+    toast("All demo data reset.");
+  } finally { btn.disabled = false; }
+});
+
 const chatLog = $("#chat-log");
 function appendChat(role, text) {
   if (!chatLog) return;
@@ -805,3 +915,4 @@ loadTransparency();
 loadNotifications();
 loadVisitStats();
 loadDiagnostics();
+loadObservations();
