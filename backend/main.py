@@ -54,6 +54,7 @@ from pydantic import BaseModel
 from . import ai_provider
 from . import camera as camera_mod
 from . import chat as chat_mod
+from . import demo_seed
 from . import push_notifier
 from . import report_generator
 from . import spatial_analyzer
@@ -230,6 +231,16 @@ monitor_task: Optional[asyncio.Task] = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global serial_thread, monitor_task
+    # Warm the in-memory observation list from anything previously persisted
+    # (esp. demo-seeded data). Order matches insertion (oldest first).
+    try:
+        prior = list(reversed(store.list_observations(limit=200)))
+        spatial_observations.extend(prior)
+        if prior:
+            print(f"[backend] warmed {len(prior)} prior observations from DB")
+    except Exception as e:
+        print(f"[backend] couldn't warm observations: {e}")
+
     serial_thread = threading.Thread(
         target=serial_reader_thread, args=(stop_event,), daemon=True
     )
@@ -860,6 +871,24 @@ async def diagnostics():
             "db_path": DB_PATH,
         },
     }
+
+
+@app.post("/api/_demo/seed")
+async def demo_seed_endpoint(reset: bool = True):
+    """Populate a coherent bakery-at-lunch story for demos. If reset=true
+    (default), wipes existing data first so the result is reproducible."""
+    if reset:
+        demo_seed.reset_all(store, tokens, spatial_observations)
+    summary = demo_seed.seed(store, tokens, spatial_observations)
+    return {"status": "ok", "summary": {
+        k: v for k, v in summary.items() if k != "personas"
+    }, "demo_token_anchor_a": summary["demo_token_anchor_a"]}
+
+
+@app.post("/api/_demo/reset")
+async def demo_reset_endpoint():
+    demo_seed.reset_all(store, tokens, spatial_observations)
+    return {"status": "ok"}
 
 
 @app.get("/api/vapid-public-key")
