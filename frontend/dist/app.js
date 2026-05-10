@@ -41,7 +41,7 @@ function switchTab(tab) {
   if (tab === "consumer") { loadNotifications(); loadVisits(); }
   if (tab === "business") {
     loadDecisions(); loadFeedbackOperator(); loadVisitStats(); loadDiagnostics();
-    loadObservations();
+    loadObservations(); loadLastReport();
   }
   if (tab === "home") loadTransparency();
 }
@@ -825,6 +825,18 @@ $("#btn-report-download")?.addEventListener("click", () => {
 
 $("#btn-report-print")?.addEventListener("click", () => window.print());
 
+async function loadLastReport() {
+  try {
+    const r = await fetch(`${API_BASE}/api/last-report`);
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d && d.report_structured) {
+      renderReport(d);
+      $("#btn-report-gen").textContent = "Regenerate";
+    }
+  } catch (_) {}
+}
+
 // ---------- Auto-adopt the demo anchor token (so Consumer tab is warm) ----------
 // The backend auto-seeds on startup when the DB is empty and exposes the
 // anchor token here. If this browser hasn't registered yet, we adopt it
@@ -891,3 +903,4 @@ loadNotifications();
 loadVisitStats();
 loadDiagnostics();
 loadObservations();
+loadLastReport();

@@ -94,6 +94,10 @@ serial_lines_parsed = 0
 # PWA fetch the demo phone's token without manual entry.
 demo_anchor_token: Optional[str] = None
 
+# Cached last-report so the Business tab is populated on first paint without
+# needing to click Generate. Overwritten whenever /api/generate-report runs.
+cached_report: Optional[dict] = None
+
 # Override with ECHOLOCATE_AUTOSEED=0 if you specifically want a fresh empty
 # system (e.g. for a manual hardware-only demo).
 AUTOSEED = os.getenv("ECHOLOCATE_AUTOSEED", "1") == "1"
@@ -238,7 +242,7 @@ monitor_task: Optional[asyncio.Task] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global serial_thread, monitor_task, demo_anchor_token
+    global serial_thread, monitor_task, demo_anchor_token, cached_report
     # Warm the in-memory observation list from anything previously persisted
     # (esp. demo-seeded data). Order matches insertion (oldest first).
     try:
@@ -258,6 +262,7 @@ async def lifespan(app: FastAPI):
             demo_seed.reset_all(store, tokens, spatial_observations)
             summary = demo_seed.seed(store, tokens, spatial_observations)
             demo_anchor_token = summary["demo_token_anchor_a"]
+            cached_report = summary.get("report")
             print(f"[backend] auto-seeded demo data "
                   f"({summary['visits']} visits, {summary['ai_decisions']} decisions, "
                   f"anchor={demo_anchor_token[:8]}…)")
@@ -643,7 +648,7 @@ async def generate_report():
         raw_output={"structured": structured},
     )
 
-    return {
+    response = {
         "report": result["markdown"],     # legacy field — keeps existing tests/clients working
         "report_markdown": result["markdown"],
         "report_structured": structured,
@@ -656,6 +661,22 @@ async def generate_report():
         # Old field name kept for backwards compatibility with existing tests
         "observation_count": len(spatial_observations),
     }
+
+    # Cache so /api/last-report can serve subsequent page loads without re-paying for the API call
+    global cached_report
+    cached_report = response
+
+    return response
+
+
+@app.get("/api/last-report")
+async def get_last_report():
+    """Returns the most-recent generated report, or null if Generate hasn't
+    been clicked yet. The Business tab loads this on first paint so the
+    Space Design Report card is populated immediately without action."""
+    if cached_report is None:
+        return {"report_structured": None}
+    return cached_report
 
 
 # ---------- Governance endpoints: AI decision log + community feedback + transparency ----------

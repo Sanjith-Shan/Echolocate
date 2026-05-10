@@ -49,24 +49,27 @@ PERSONAS = [
 
 
 def _visits_script(persona_to_token: dict[str, str]):
-    """Returns a list of (token_id, zone, visited_at, crowded) tuples."""
+    """Returns a list of (token_id, zone, visited_at, crowded, sick) tuples.
+    `lunch-rush-1` is the persona who later reports a positive test — their
+    visits are flagged so the business stats counter is non-zero and the
+    contact-tracing flow lights up the Consumer inbox."""
     out = []
-    add = lambda p, z, t, c=False: out.append(
-        (persona_to_token[p], z, _utc(t), c))
+    add = lambda p, z, t, c=False, s=False: out.append(
+        (persona_to_token[p], z, _utc(t), c, s))
 
     # 11:50 — calm pre-rush
     add("anchor-A",     "counter",  _today_at(11, 50))
     add("anchor-B",     "seating",  _today_at(11, 55))
 
     # 12:15 — the line begins; first "felt crowded" reports
-    add("lunch-rush-1", "entrance", _today_at(12, 15), True)
-    add("lunch-rush-2", "entrance", _today_at(12, 18), True)
+    add("lunch-rush-1", "entrance", _today_at(12, 15), c=True, s=True)
+    add("lunch-rush-2", "entrance", _today_at(12, 18), c=True)
 
     # 12:30-12:45 — peak crowd
-    add("lunch-rush-3", "counter",  _today_at(12, 32), True)
+    add("lunch-rush-3", "counter",  _today_at(12, 32), c=True)
     add("lunch-rush-4", "counter",  _today_at(12, 38))
-    add("lunch-rush-1", "counter",  _today_at(12, 42))    # same person in another zone
-    add("lunch-rush-2", "seating",  _today_at(12, 45), True)
+    add("lunch-rush-1", "counter",  _today_at(12, 42), s=True)   # the sick visitor was here too
+    add("lunch-rush-2", "seating",  _today_at(12, 45), c=True)
     add("lunch-rush-3", "seating",  _today_at(12, 48))
 
     # 13:00 — winding down
@@ -285,10 +288,11 @@ def seed(store: "Store", token_manager: "AnonymousTokenManager",
 
     # 2. Visits
     visits = _visits_script(persona_to_token)
-    for token, zone, visited_at, crowded in visits:
+    for token, zone, visited_at, crowded, sick in visits:
         store.add_visit(
             token_id=token, zone=zone, visited_at=visited_at,
             self_reported_crowded=crowded,
+            self_reported_sick=sick,
             rotating_id=token_manager.registered_tokens[token]["current_rotating_id"],
         )
         # Also reflect in the in-memory zone_history so /api/consumer/my-visits
@@ -402,4 +406,191 @@ def seed(store: "Store", token_manager: "AnonymousTokenManager",
         "notifications": notif_count,
         "demo_token_anchor_a": anchor_a,
         "personas": persona_to_token,
+        "report": BAKERY_REPORT,
     }
+
+
+# ---------- Polished structured report (cached, served on first paint) ----------
+
+BAKERY_REPORT = {
+    "structured": {
+        "executive_summary": (
+            "Lunch-rush crowding clusters at the doorway and the cream/sugar "
+            "station. Moving the cream/sugar station ~1 m east is the single "
+            "highest-impact change — it would clear queue spillover and roughly "
+            "halve the felt-crowded reports."
+        ),
+        "current_state": (
+            "Today's lunch peak (12:15-12:45) reached 8 people in a footprint "
+            "that comfortably maintains 1.5 m spacing for 6. One visitor in the "
+            "lunch window has since reported a positive test; anonymous "
+            "exposure alerts have already been sent to the 2 visitors whose "
+            "zone+time records overlapped."
+        ),
+        "spatial_layout": {
+            "inferred_features": [
+                "Entrance doorway, front-left",
+                "Service counter, center-back",
+                "Cream/sugar station, center-front (in line of entry)",
+                "Seating along the right wall",
+                "Window seating, back-right",
+            ],
+            "estimated_safe_capacity": (
+                "6 people while maintaining 1.5 m spacing. 8 is the hard limit "
+                "before the entry path is fully blocked."
+            ),
+        },
+        "blockers": [
+            {
+                "id": "b1", "severity": "high",
+                "location": "entrance doorway",
+                "description": "The cream/sugar station bisects the entry queue at peak.",
+                "evidence": (
+                    "4 felt-crowded reports tied to this location during "
+                    "12:15-12:45; 2 community feedback items reference it by name."
+                ),
+            },
+            {
+                "id": "b2", "severity": "medium",
+                "location": "narrow path to back seating",
+                "description": "No clear flow path to back tables when seating fills up.",
+                "evidence": (
+                    "12:45 observation: 4 people clustered front-of-house, "
+                    "4 seated, no through-path."
+                ),
+            },
+        ],
+        "high_congestion_areas": [
+            {
+                "location": "entrance doorway + cream/sugar station",
+                "frequency": "every observation in the 12:15-12:45 window",
+                "peak_times": "12:15-12:45",
+                "estimated_density": "tight",
+            },
+            {
+                "location": "service counter",
+                "frequency": "3 of 4 observations",
+                "peak_times": "12:30-12:45",
+                "estimated_density": "tight",
+            },
+            {
+                "location": "window seating",
+                "frequency": "1 of 4 observations",
+                "peak_times": "13:10-13:30",
+                "estimated_density": "moderate",
+            },
+        ],
+        "social_distancing": {
+            "current_compliance": "poor",
+            "rationale": (
+                "Peak occupancy of 8 in a layout designed for 6 at 1.5 m "
+                "spacing. Doorway clustering forces sub-1 m proximity for "
+                "anyone entering or leaving during the lunch window."
+            ),
+            "recommendations": [
+                {
+                    "action": "Move the cream/sugar station ~1 m east, against the side wall",
+                    "rationale": "Frees a clear flow path through the entrance.",
+                    "expected_impact": (
+                        "~40-50% reduction in doorway proximity events based on "
+                        "observed cluster patterns."
+                    ),
+                },
+                {
+                    "action": "Soft-cap entry at 6 during 12:15-12:45",
+                    "rationale": "Holds the room within physical safe-capacity at peak.",
+                    "expected_impact": (
+                        "Eliminates the >6-person breaches; expected wait "
+                        "increase ~3-4 min at peak."
+                    ),
+                },
+            ],
+        },
+        "changes": [
+            {
+                "id": "c1", "priority": "high",
+                "action": "Move the cream/sugar station 1 m east against the side wall",
+                "location": "front-of-house, near entrance",
+                "dimensions": "~1 m east; no other footprint change",
+                "rationale": (
+                    "The single feature both the community feedback and "
+                    "spatial observations identified as the entry-queue bisector."
+                ),
+                "expected_impact": "~40% fewer queue-spillover events; preserves all current floor space.",
+            },
+            {
+                "id": "c2", "priority": "medium",
+                "action": "Add a second pickup station at the back-right corner",
+                "location": "back-right corner",
+                "dimensions": "~0.8 m wide standalone counter",
+                "rationale": "Splits flowing customers (pickup) from stationary ones (ordering).",
+                "expected_impact": "Reduces counter cluster density from 4 → ~2 at peak.",
+            },
+            {
+                "id": "c3", "priority": "medium",
+                "action": "Re-orient front-row tables to leave a 1 m central path",
+                "location": "center-front to center-back",
+                "dimensions": "shift each of 3 tables ~30 cm",
+                "rationale": "Restores back-seating accessibility when the front fills up.",
+                "expected_impact": "Customers reach back tables without weaving through the queue.",
+            },
+            {
+                "id": "c4", "priority": "low",
+                "action": "Increase HVAC throw to the back-left corner",
+                "location": "back-left corner",
+                "dimensions": "open the closest vent damper fully",
+                "rationale": "1 community concern reports stuffiness in this corner.",
+                "expected_impact": "Improves air mixing where the post-lunch cluster lingers.",
+            },
+        ],
+        "temporal_patterns": [
+            {
+                "timeframe": "12:15-12:45 (lunch peak)",
+                "observation": (
+                    "3 of 4 threshold breaches happened in this 30-minute "
+                    "window. Recurring across the recent visit history."
+                ),
+            },
+            {
+                "timeframe": "13:10-13:30 (post-lunch)",
+                "observation": "Window seating draws lingering clusters — popular hangout, not a chokepoint.",
+            },
+        ],
+        "data_quality_caveats": (
+            "Confidence is high for the cream/sugar station finding (multiple "
+            "independent sources agree) and medium for the back-path "
+            "recommendation (single observation). Temporal pattern reflects "
+            "today's session; weekly trend would need 5-7 days of data."
+        ),
+        "methodology_note": (
+            "Echolocate captures spatial metadata only — never images, faces, "
+            "or identities. This report reasons over snapshot-derived counts "
+            "and clusters, anonymous visit aggregates, and free-text "
+            "community feedback."
+        ),
+    },
+    "model": "gpt-4o-mini",
+    "context": {
+        "observation_count": 4,
+        "visit_count": 13,
+        "feedback_count": 4,
+    },
+}
+
+
+def _structured_to_markdown_summary(rep: dict) -> str:
+    """Lightweight markdown rendering of the cached report — full version
+    is in report_generator._structured_to_markdown but we don't want a
+    cyclic import."""
+    s = rep["structured"]
+    lines = ["# Space Design Report", "",
+             "## Executive summary", s["executive_summary"], "",
+             "## What's happening right now", s["current_state"], ""]
+    return "\n".join(lines)
+
+
+# Pre-render the markdown so /api/last-report returns the same shape the
+# Generate endpoint does.
+BAKERY_REPORT["report"] = _structured_to_markdown_summary(BAKERY_REPORT)
+BAKERY_REPORT["report_markdown"] = BAKERY_REPORT["report"]
+BAKERY_REPORT["report_structured"] = BAKERY_REPORT["structured"]
